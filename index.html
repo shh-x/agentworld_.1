@@ -538,9 +538,10 @@
     
     <div id="bottom-bar" class="hud-panel">
         <div class="control-buttons">
-            <button class="control-btn" id="start-btn">▶ START</button>
-            <button class="control-btn" id="pause-btn">⏸ PAUSE</button>
-            <button class="control-btn" id="reset-btn">↺ RESET</button>
+            <button class="control-btn" id="start-btn"> START</button>
+            <button class="control-btn" id="pause-btn"> PAUSE</button>
+            <button id="spawn-btn" class="control-btn">SPAWN AGENTS</button>
+            <button id="reset-btn" class="control-btn"> RESET</button>
         </div>
         <div class="speed-control">
             <span>SPEED:</span>
@@ -574,6 +575,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    <script src="worldstate.js"></script>
     <script>
         // Event Log Management
         const eventLogContainer = document.getElementById('event-log-container');
@@ -660,6 +662,11 @@
             isPaused = false;
             addLog('Simulation started', 'system');
             if (window.WORLD) {
+                // Spawn agents if they haven't been spawned yet
+                if (window.WORLD.agents.length === 0) {
+                    console.log('START: Spawning agents automatically...');
+                    window.WORLD.spawnAgents();
+                }
                 window.WORLD.setPhase('roaming');
             }
         });
@@ -667,6 +674,20 @@
         document.getElementById('pause-btn').addEventListener('click', () => {
             isPaused = !isPaused;
             addLog(isPaused ? 'Simulation paused' : 'Simulation resumed', 'system');
+        });
+
+        document.getElementById('spawn-btn').addEventListener('click', () => {
+            console.log('SPAWN BUTTON CLICKED');
+            console.log('window.WORLD exists:', !!window.WORLD);
+            console.log('window.WORLD type:', typeof window.WORLD);
+            console.log('window.WORLD.spawnAgents exists:', !!(window.WORLD && window.WORLD.spawnAgents));
+            console.log('All window properties:', Object.keys(window).filter(k => k.includes('WORLD')));
+            
+            addLog('Spawn button clicked - agents should spawn via start button', 'system');
+            if (!window.WORLD || !window.WORLD.spawnAgents) {
+                console.log('World or spawnAgents not available');
+                addLog('Error: World not ready', 'system');
+            }
         });
 
         document.getElementById('reset-btn').addEventListener('click', () => {
@@ -769,6 +790,10 @@
         const rooms = [];
         const connectionLines = [];
         
+        // Agent system
+        const agents = [];
+        window.agentMeshes = new Map(); // agentId -> mesh
+        
         // New 7-room layout
         const ROOMS = {
             cafeteria:  { x:  0,  z: -4, size: 'large'  },
@@ -793,14 +818,14 @@
 
         // Connection pairs for 7-room layout
         const connectionPairs = [
-            { from: 'Cafeteria', to: 'Reactor' },
-            { from: 'Cafeteria', to: 'Security' },
-            { from: 'Cafeteria', to: 'Admin' },
-            { from: 'Reactor', to: 'MedBay' },
-            { from: 'MedBay', to: 'Security' },
-            { from: 'Security', to: 'Electrical' },
-            { from: 'Electrical', to: 'Storage' },
-            { from: 'Storage', to: 'Admin' }
+            { from: 'cafeteria', to: 'reactor' },
+            { from: 'cafeteria', to: 'security' },
+            { from: 'cafeteria', to: 'admin' },
+            { from: 'reactor', to: 'medbay' },
+            { from: 'medbay', to: 'security' },
+            { from: 'security', to: 'electrical' },
+            { from: 'electrical', to: 'storage' },
+            { from: 'storage', to: 'admin' }
         ];
         
         // Get room size parameters based on importance for 7-room layout
@@ -886,42 +911,50 @@
             return room;
         }
         
-        // Create glowing tube connections between rooms
+        // Create simple line connections between rooms
         function createConnectionLines() {
+            console.log('=== CREATING ROOM CONNECTIONS ===');
+            
+            // Clear existing connections
+            connectionLines.forEach(line => scene.remove(line));
+            connectionLines.length = 0;
+            
+            const connectionMaterial = new THREE.LineBasicMaterial({
+                color: 0x00e5ff,
+                opacity: 0.25,
+                transparent: true
+            });
+            
             connectionPairs.forEach(pair => {
-                const fromRoom = rooms.find(r => r.name === pair.from);
-                const toRoom = rooms.find(r => r.name === pair.to);
+                const fromRoom = rooms.find(r => r.name.toLowerCase() === pair.from);
+                const toRoom = rooms.find(r => r.name.toLowerCase() === pair.to);
                 
                 if (fromRoom && toRoom) {
-                    // Create curve between room centers
-                    const curve = new THREE.CatmullRomCurve3([
-                        new THREE.Vector3(fromRoom.position.x, 0.1, fromRoom.position.z),
-                        new THREE.Vector3(toRoom.position.x, 0.1, toRoom.position.z)
-                    ]);
+                    // Create line geometry between room centers
+                    const points = [
+                        new THREE.Vector3(fromRoom.position.x, 0.2, fromRoom.position.z),
+                        new THREE.Vector3(toRoom.position.x, 0.2, toRoom.position.z)
+                    ];
                     
-                    // Create main tube (darker, thicker)
-                    const tubeGeometry = new THREE.TubeGeometry(curve, 8, 0.06, 8, false);
-                    const tubeMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0x0a4a6e,
-                        transparent: true,
-                        opacity: 0.7
-                    });
-                    const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
-                    scene.add(tube);
-                    connectionLines.push(tube);
+                    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(lineGeometry, connectionMaterial);
                     
-                    // Create glow line (brighter, thinner)
-                    const glowGeometry = new THREE.TubeGeometry(curve, 8, 0.02, 8, false);
-                    const glowMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0x00ffff,
-                        transparent: true,
-                        opacity: 0.4
-                    });
-                    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-                    scene.add(glow);
-                    connectionLines.push(glow);
+                    scene.add(line);
+                    connectionLines.push(line);
+                    
+                    // Log connection to console for verification
+                    console.log(`Connection: ${fromRoom.name} ↔ ${toRoom.name}`);
+                    console.log(`  From: (${fromRoom.position.x}, ${fromRoom.position.z})`);
+                    console.log(`  To: (${toRoom.position.x}, ${toRoom.position.z})`);
+                } else {
+                    console.log(`FAILED to create connection: ${pair.from} ↔ ${pair.to}`);
+                    console.log(`  From room found: ${!!fromRoom}`);
+                    console.log(`  To room found: ${!!toRoom}`);
                 }
             });
+            
+            console.log(`Created ${connectionLines.length} connection lines`);
+            console.log('=== END ROOM CONNECTIONS ===');
         }
         
         // Create all rooms
@@ -951,6 +984,147 @@
         clearRooms();
         createRooms();
         createConnectionLines();
+        
+        // Get room position helper function
+        window.getRoomPosition = function(roomId) {
+            const roomPositions = {
+                cafeteria: { x: 0, z: -4 },
+                reactor: { x: -8, z: 0 },
+                medbay: { x: -5, z: 3 },
+                security: { x: -2, z: 1 },
+                electrical: { x: 0, z: 5 },
+                storage: { x: 4, z: 4 },
+                admin: { x: 6, z: -1 }
+            };
+            return roomPositions[roomId] || { x: 0, z: 0 };
+        }
+
+        // Agent mesh creation function
+        window.spawnAgentMesh = function(agent) {
+            console.log('Creating mesh for:', agent.name, 'color:', agent.color)
+            
+            // Create agent group
+            const agentGroup = new THREE.Group();
+            
+            // Body: capsule shape using CylinderGeometry + 2 SphereGeometry on top/bottom
+            const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16);
+            const bodyMaterial = new THREE.MeshStandardMaterial({
+                color: agent.color,
+                roughness: 0.3,
+                metalness: 0.7,
+                emissive: agent.color,
+                emissiveIntensity: 0.4
+            });
+            
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.3;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            
+            // Top sphere (head)
+            const topSphereGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const topSphere = new THREE.Mesh(topSphereGeometry, bodyMaterial);
+            topSphere.position.y = 0.6;
+            topSphere.castShadow = true;
+            
+            // Bottom sphere (feet)
+            const bottomSphereGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const bottomSphere = new THREE.Mesh(bottomSphereGeometry, bodyMaterial);
+            bottomSphere.position.y = 0;
+            bottomSphere.castShadow = true;
+            
+            // Visor: small flattened sphere on front-upper body
+            const visorGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+            visorGeometry.scale(1, 0.75, 0.5); // Scale to flatten it
+            const visorMaterial = new THREE.MeshStandardMaterial({
+                color: 0xaaddff,
+                emissive: 0xaaddff,
+                emissiveIntensity: 0.8,
+                roughness: 0.1,
+                metalness: 0.9
+            });
+            
+            const visor = new THREE.Mesh(visorGeometry, visorMaterial);
+            visor.position.set(0, 0.5, 0.25); // Front-upper position
+            visor.castShadow = true;
+            
+            // Glow ring at feet: torus, radius 0.35, tube 0.04, color agent.color, opacity 0.5
+            const glowRingGeometry = new THREE.TorusGeometry(0.35, 0.04, 8, 16);
+            const glowRingMaterial = new THREE.MeshStandardMaterial({
+                color: agent.color,
+                transparent: true,
+                opacity: 0.5,
+                emissive: agent.color,
+                emissiveIntensity: 0.6,
+                roughness: 0.1,
+                metalness: 0.8
+            });
+            
+            const glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
+            glowRing.position.y = 0.05;
+            glowRing.rotation.x = Math.PI / 2; // Lay flat
+            
+            // Add all parts to group
+            agentGroup.add(body);
+            agentGroup.add(topSphere);
+            agentGroup.add(bottomSphere);
+            agentGroup.add(visor);
+            agentGroup.add(glowRing);
+            
+            // Name tag: CSS2DObject floating 1 unit above agent, shows agent.name in agent.color
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'agent-label';
+            labelDiv.textContent = agent.name;
+            labelDiv.style.color = agent.color;
+            labelDiv.style.fontSize = '12px';
+            labelDiv.style.fontFamily = 'Courier New, monospace';
+            labelDiv.style.fontWeight = 'bold';
+            labelDiv.style.textShadow = `0 0 5px ${agent.color}`;
+            labelDiv.style.whiteSpace = 'nowrap';
+            labelDiv.style.pointerEvents = 'none';
+            labelDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            labelDiv.style.padding = '2px 6px';
+            labelDiv.style.borderRadius = '3px';
+            labelDiv.style.border = `1px solid ${agent.color}`;
+            
+            const nameLabel = new THREE.CSS2DObject(labelDiv);
+            nameLabel.position.y = 1.2; // 1 unit above agent
+            
+            agentGroup.add(nameLabel);
+            
+            // Position agent at room location with slight random offset
+            const roomPos = getRoomPosition(agent.currentRoom);
+            agentGroup.position.set(
+                roomPos.x + (Math.random() - 0.5) * 1.5,
+                0.5,
+                roomPos.z + (Math.random() - 0.5) * 1.5
+            );
+            
+            // Add to scene and store reference
+            scene.add(agentGroup);
+            console.log('Mesh added to scene for:', agent.name, 'position:', agentGroup.position)
+            console.log('Total scene children:', scene.children.length)
+            agentMeshes.set(agent.id, agentGroup);
+            
+            // Store mesh reference on agent object
+            agent.mesh = agentGroup;
+            
+            console.log(`Created detailed 3D mesh for ${agent.name} in ${agent.currentRoom}`);
+        };
+
+        // Update agent mesh position when moving between rooms
+        window.updateAgentMeshPosition = function(agent) {
+            if (!agent.mesh) return;
+            
+            const roomPos = getRoomPosition(agent.currentRoom);
+            agent.mesh.position.set(
+                roomPos.x + (Math.random() - 0.5) * 1.5,
+                0.5,
+                roomPos.z + (Math.random() - 0.5) * 1.5
+            );
+            
+            console.log(`Updated ${agent.name} position to ${agent.currentRoom}:`, agent.mesh.position);
+        };
         
         // Add floating particles for dynamic effect
         const particles = [];
@@ -998,11 +1172,23 @@
         createParticles();
         createRotatingLights();
         
+        // Game loop variables
+        let lastTickTime = 0;
+        const tickInterval = 1000; // 1 second between ticks (adjustable)
+
         // Render loop
         function animate() {
             requestAnimationFrame(animate);
             
             const time = Date.now() * 0.001;
+            
+            // Game tick system
+            if (window.WORLD && window.WORLD.phase === 'roaming') {
+                if (time - lastTickTime >= tickInterval / 1000) {
+                    window.WORLD.tick();
+                    lastTickTime = time;
+                }
+            }
             
             // Update OrbitControls for smooth camera movement
             controls.update();
@@ -1044,6 +1230,29 @@
                 const material = line.material;
                 material.opacity = 0.3 + Math.sin(time * 2 + i * 0.5) * 0.3;
             });
+            
+            // Smooth agent movement every frame
+            if (window.WORLD && window.WORLD.agents) {
+                for (const agent of WORLD.agents) {
+                    const mesh = window.agentMeshes?.get(agent.id)
+                    if (!mesh || !agent.targetPosition) continue
+
+                    if (agent.isMoving) {
+                        mesh.position.lerp(agent.targetPosition, 0.02)
+                        // Rotate to face direction of movement
+                        mesh.rotation.y += 0.03
+                        // Arrived?
+                        if (mesh.position.distanceTo(agent.targetPosition) < 0.1) {
+                            mesh.position.copy(agent.targetPosition)
+                            agent.isMoving = false
+                            mesh.rotation.y = 0
+                        }
+                    } else {
+                        // Idle bob animation
+                        mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + agent.id) * 0.06
+                    }
+                }
+            }
             
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);

@@ -1,3 +1,13 @@
+// AGENT ROSTER - Available agents for spawning
+const AGENT_ROSTER = [
+  { name: 'NOVA',  color: '#ef5350' },
+  { name: 'AXEL',  color: '#42a5f5' },
+  { name: 'ZIRA',  color: '#66bb6a' },
+  { name: 'KAGE',  color: '#ffca28' },
+  { name: 'PULSE', color: '#ab47bc' },
+  { name: 'VERA',  color: '#26c6da' },
+];
+
 // TASK SYSTEM - Individual task management
 class Task {
   constructor(id, roomId, name, ticksToComplete) {
@@ -26,6 +36,107 @@ class Task {
 
   getProgress() {
     return Math.min(this.ticksSpent / this.ticksToComplete, 1);
+  }
+}
+
+// AGENT STATE - Individual AI agent management
+class AgentState {
+  constructor(id, name, color, role, startRoomId) {
+    this.id = id
+    this.name = name
+    this.color = color
+    this.role = role              // 'crewmate' | 'impostor'
+    this.alive = true
+    this.currentRoom = startRoomId
+    this.previousRoom = null
+    this.path = []                // planned path (array of roomIds)
+    this.currentTask = null       // Task object they're working on
+    this.assignedTasks = []       // Task IDs assigned to this agent
+    this.completedTasks = []
+    this.memory = []              // last N observations (capped at MEMORY_SIZE)
+    this.suspicions = {}          // { agentName: suspicionScore }
+    this.killCooldown = 0
+    this.personality = null       // set in Phase 3
+    this.state = 'idle'           // idle | moving | working | hunting | fleeing
+    this.targetPosition = null   // THREE.Vector3
+    this.isMoving = false
+  }
+
+  addMemory(observation) {
+    this.memory.unshift(observation)
+    if (this.memory.length > (window.GAME_CONFIG ? window.GAME_CONFIG.MEMORY_SIZE : 10)) {
+      this.memory.pop()
+    }
+  }
+
+  raiseSuspicion(agentName, amount) {
+    this.suspicions[agentName] = (this.suspicions[agentName] || 0) + amount
+  }
+
+  getTopSuspect() {
+    return Object.entries(this.suspicions).sort((a,b) => b[1]-a[1])[0] || null
+  }
+
+  // Helper methods for agent state management
+  moveToRoom(roomId) {
+    this.previousRoom = this.currentRoom
+    this.currentRoom = roomId
+    this.path = []
+  }
+
+  setPath(path) {
+    this.path = path
+  }
+
+  assignTask(task) {
+    this.assignedTasks.push(task.id)
+    this.currentTask = task
+  }
+
+  completeTask(task) {
+    const index = this.assignedTasks.indexOf(task.id)
+    if (index > -1) {
+      this.assignedTasks.splice(index, 1)
+    }
+    this.completedTasks.push(task.id)
+    if (this.currentTask && this.currentTask.id === task.id) {
+      this.currentTask = null
+    }
+  }
+
+  setState(newState) {
+    this.state = newState
+  }
+
+  isImpostor() {
+    return this.role === 'impostor'
+  }
+
+  canKill() {
+    return this.isImpostor() && this.alive && this.killCooldown === 0
+  }
+
+  setKillCooldown(ticks) {
+    this.killCooldown = ticks
+  }
+
+  reduceKillCooldown() {
+    if (this.killCooldown > 0) {
+      this.killCooldown--
+    }
+  }
+
+  getTaskProgress() {
+    if (!this.currentTask) return 0
+    return this.currentTask.getProgress()
+  }
+
+  getCompletedTaskCount() {
+    return this.completedTasks.length
+  }
+
+  getAssignedTaskCount() {
+    return this.assignedTasks.length
   }
 }
 
@@ -76,9 +187,10 @@ class RoomState {
 // WORLD STATE - Live Game World Management
 class WorldState {
   constructor() {
+    console.log('=== WORLDSTATE CONSTRUCTOR CALLED ===')
     this.rooms = {}          // roomId → RoomState
     this.agents = []         // array of AgentState objects
-    this.tick = 0            // current simulation tick
+    this.gameTick = 0        // current simulation tick counter
     this.phase = 'idle'      // idle | roaming | meeting | voting | gameover
     this.winner = null       // null | 'crewmates' | 'impostors'
     this.events = []         // global event history
@@ -131,6 +243,429 @@ class WorldState {
     this.initializeTasks();
     
     this.logEvent('system', 'World initialized with 7 rooms and tasks');
+    
+    // Agents will be spawned after page loads completely
+  }
+
+  spawnAgents() {
+    if (this.agents.length > 0) {
+      console.log('Agents already spawned, clearing first...')
+      this.agents = []
+      this.rooms['cafeteria'].agents = new Set()
+    }
+    console.log('=== SPAWN AGENTS CALLED ===')
+    console.log('WORLD.agents before spawn:', this.agents.length)
+    
+    const impostorCount = window.GAME_CONFIG ? window.GAME_CONFIG.IMPOSTOR_COUNT : 1;
+    const tasksPerAgent = window.GAME_CONFIG ? window.GAME_CONFIG.TASKS_PER_AGENT : 3;
+    
+    // 1. Pick IMPOSTOR_COUNT random agents to be impostors
+    const agentIndices = Array.from({length: AGENT_ROSTER.length}, (_, i) => i);
+    const impostorIndices = [];
+    
+    // Randomly select impostors
+    for (let i = 0; i < impostorCount; i++) {
+      const randomIndex = Math.floor(Math.random() * agentIndices.length);
+      impostorIndices.push(agentIndices.splice(randomIndex, 1)[0]);
+    }
+    
+    // 2. Create AgentState objects
+    AGENT_ROSTER.forEach((agentData, index) => {
+      const isImpostor = impostorIndices.includes(index);
+      const role = isImpostor ? 'impostor' : 'crewmate';
+      
+      // Create agent with unique ID
+      const agent = new AgentState(
+        index,
+        agentData.name,
+        agentData.color,
+        role,
+        'cafeteria' // All agents start in cafeteria
+      );
+      
+      // 3. Assign tasks to crewmates (impostors get fake tasks)
+      if (!isImpostor) {
+        this.assignTasksToAgent(agent, tasksPerAgent);
+      } else {
+        // Impostors get fake tasks for appearance
+        this.assignFakeTasksToAgent(agent, tasksPerAgent);
+      }
+      
+      // 4. Add to WORLD.agents
+      this.agents.push(agent);
+      console.log('Pushed agent, total now:', this.agents.length);
+      
+      // 5. Add to cafeteria room
+      const cafeteria = this.getRoom('cafeteria');
+      if (cafeteria) {
+        cafeteria.addAgent(agent.id);
+      }
+      
+      // 6. Create 3D mesh for agent
+      this.spawnAgentMesh(agent);
+    });
+    
+    // 7. Update UI
+    this.updateAgentPanel();
+    this.updateTaskHUD();
+    
+    // 8. Debug logging
+    console.log('=== AGENT SPAWNING ===');
+    this.agents.forEach(agent => {
+      console.log(`${agent.name} (${agent.role.toUpperCase()}) - Tasks: ${agent.assignedTasks.length}`);
+    });
+    console.log(`IMPOSTORS: ${this.agents.filter(a => a.isImpostor()).map(a => a.name).join(', ')}`);
+    console.log('=== END AGENT SPAWNING ===');
+    
+    this.logEvent('system', `Spawned ${this.agents.length} agents (${impostorCount} impostors)`);
+    
+    console.log('=== SPAWN COMPLETE ===')
+    console.log('WORLD.agents after spawn:', this.agents.length)
+    this.agents.forEach(a => console.log(a.name, a.color, a.currentRoom, a.role))
+  }
+
+  assignTasksToAgent(agent, taskCount) {
+    const roomIds = Object.keys(this.rooms);
+    const assignedTasks = [];
+    
+    for (let i = 0; i < taskCount; i++) {
+      // Find a room with available tasks
+      const availableRooms = roomIds.filter(roomId => {
+        const room = this.rooms[roomId];
+        return room.tasks.some(task => !task.isComplete && !assignedTasks.includes(task.id));
+      });
+      
+      if (availableRooms.length === 0) break;
+      
+      const randomRoomId = availableRooms[Math.floor(Math.random() * availableRooms.length)];
+      const room = this.rooms[randomRoomId];
+      
+      // Find an unassigned task in this room
+      const availableTask = room.tasks.find(task => !task.isComplete && !assignedTasks.includes(task.id));
+      
+      if (availableTask) {
+        agent.assignTask(availableTask);
+        assignedTasks.push(availableTask.id);
+      }
+    }
+  }
+
+  assignFakeTasksToAgent(agent, taskCount) {
+    // Impostors get fake tasks that don't actually exist in the world
+    // This makes them appear to have tasks like crewmates
+    const fakeTaskNames = ['Fix Wiring', 'Start Reactor', 'Submit Scan', 'Check Cameras', 'Reset Breakers', 'Fuel Engines', 'Swipe Card'];
+    
+    for (let i = 0; i < taskCount; i++) {
+      const fakeTask = {
+        id: `fake_${agent.id}_${i}`,
+        name: fakeTaskNames[Math.floor(Math.random() * fakeTaskNames.length)],
+        roomId: 'cafeteria',
+        isComplete: false,
+        getProgress: () => 0
+      };
+      
+      agent.assignTask(fakeTask);
+    }
+  }
+
+  spawnAgentMesh(agent) {
+    console.log(`WorldState.spawnAgentMesh called for ${agent.name}`);
+    // Call the global 3D mesh creation function
+    if (window.spawnAgentMesh && typeof window.spawnAgentMesh === 'function') {
+      console.log(`Calling window.spawnAgentMesh for ${agent.name}`);
+      window.spawnAgentMesh(agent);
+    } else {
+      console.log(`Would create 3D mesh for ${agent.name} at cafeteria position`);
+    }
+  }
+
+  // Find shortest path between rooms using BFS
+  findPath(fromRoomId, toRoomId) {
+    if (fromRoomId === toRoomId) return [fromRoomId];
+    
+    const queue = [[fromRoomId]];
+    const visited = new Set([fromRoomId]);
+    
+    while (queue.length > 0) {
+      const path = queue.shift();
+      const currentRoom = path[path.length - 1];
+      
+      // Get connected rooms
+      const currentRoomState = this.rooms[currentRoom];
+      if (!currentRoomState) continue;
+      
+      for (const connectedRoomId of currentRoomState.connectedTo) {
+        if (connectedRoomId === toRoomId) {
+          return [...path, connectedRoomId];
+        }
+        
+        if (!visited.has(connectedRoomId)) {
+          visited.add(connectedRoomId);
+          queue.push([...path, connectedRoomId]);
+        }
+      }
+    }
+    
+    // No path found
+    return [];
+  }
+
+  // Decide destination for agent based on role
+  decideDestination(agent) {
+    if (agent.role === 'crewmate') {
+      // Go to next incomplete assigned task room
+      const nextTask = agent.assignedTasks.find(taskId => {
+        const task = this.tasks.find(t => t.id === taskId);
+        return task && !task.isComplete;
+      });
+      
+      if (nextTask) {
+        const task = this.tasks.find(t => t.id === nextTask);
+        return task ? task.roomId : 'cafeteria';
+      }
+      
+      // If no tasks, wander randomly
+      const roomIds = Object.keys(this.rooms);
+      return roomIds[Math.floor(Math.random() * roomIds.length)];
+    }
+    
+    if (agent.role === 'impostor') {
+      // Go to room with most crewmates
+      const rooms = Object.values(this.rooms);
+      const target = rooms
+        .filter(room => room.id !== agent.currentRoom)
+        .map(room => ({
+          id: room.id,
+          crewmateCount: room.agents.size
+        }))
+        .sort((a, b) => b.crewmateCount - a.crewmateCount)[0];
+      
+      return target ? target.id : 'cafeteria';
+    }
+    
+    return 'cafeteria';
+  }
+
+  moveAgent(agent) {
+    try {
+      console.log(`moveAgent called for ${agent.name}, alive: ${agent.alive}, currentRoom: ${agent.currentRoom}, path length: ${agent.path?.length || 0}`)
+      
+      if (!agent.alive) {
+        console.log(`${agent.name} is dead, skipping movement`)
+        return
+      }
+
+      // If no path planned, decide destination
+      if (!agent.path || agent.path.length === 0) {
+        console.log(`${agent.name} has no path, deciding destination`)
+        const dest = this.decideDestination(agent)
+        console.log(`${agent.name} decided destination: ${dest}`)
+        if (!dest) {
+          console.log(`${agent.name} has no destination, skipping`)
+          return
+        }
+        agent.path = this.findPath(agent.currentRoom, dest)
+        console.log(`${agent.name} path from ${agent.currentRoom} to ${dest}:`, agent.path)
+        if (agent.path && agent.path.length > 0) {
+          agent.path.shift() // remove current room from path
+          console.log(`${agent.name} path after shift:`, agent.path)
+        }
+      }
+
+      // Take one step
+      if (agent.path && agent.path.length > 0) {
+        const nextRoom = agent.path.shift()
+        console.log(`${agent.name} moving to ${nextRoom}`)
+        
+        // Update world room sets
+        this.rooms[agent.currentRoom].agents.delete(agent.id)
+        agent.previousRoom = agent.currentRoom
+        agent.currentRoom = nextRoom
+        this.rooms[nextRoom].agents.add(agent.id)
+        
+        agent.state = 'moving'
+        console.log(`MOVE: ${agent.name} → ${this.rooms[nextRoom].name}`)
+        this.logEvent('move', `${agent.name} moved to ${this.rooms[nextRoom].name}`)
+        
+        // Set target position for smooth movement
+        console.log(`DEBUG: Setting target position for ${agent.name} (id: ${agent.id}) to ${nextRoom}`)
+        console.log(`DEBUG: getRoomPosition exists:`, !!window.getRoomPosition)
+        console.log(`DEBUG: agentMeshes exists:`, !!window.agentMeshes)
+        console.log(`DEBUG: agentMeshes keys:`, Array.from(window.agentMeshes?.keys() || []))
+        console.log(`DEBUG: agentMeshes size:`, window.agentMeshes?.size)
+        console.log(`DEBUG: looking for agent.id:`, agent.id)
+        console.log(`DEBUG: agent mesh exists:`, !!window.agentMeshes?.[agent.id])
+        console.log(`DEBUG: agent mesh via get:`, !!window.agentMeshes?.get(agent.id))
+        console.log(`DEBUG: THREE exists:`, !!window.THREE)
+        
+        if (window.getRoomPosition && window.agentMeshes && window.agentMeshes.get(agent.id)) {
+          const roomPos = window.getRoomPosition(nextRoom)
+          console.log(`DEBUG: Room position:`, roomPos)
+          if (roomPos) {
+            try {
+              agent.targetPosition = new THREE.Vector3(roomPos.x, 0.5, roomPos.z)
+              agent.isMoving = true
+              console.log(`SUCCESS: Set target position for ${agent.name}:`, agent.targetPosition)
+            } catch (error) {
+              console.error(`ERROR creating Vector3:`, error)
+            }
+          }
+        } else {
+          console.log(`FAILED: Missing dependencies for target position`)
+        }
+      } else {
+        console.log(`${agent.name} has no path to move`)
+      }
+    } catch (error) {
+      console.error(`Error in moveAgent for ${agent.name}:`, error)
+    }
+  }
+
+  decideDestination(agent) {
+    console.log(`decideDestination for ${agent.name}, role: ${agent.role}, assignedTasks: ${agent.assignedTasks?.length || 0}`)
+    
+    if (agent.role === 'crewmate') {
+      console.log(`${agent.name} assignedTasks:`, agent.assignedTasks)
+      
+      // Find actual task objects from task IDs
+      const allTasks = []
+      Object.values(this.rooms).forEach(room => {
+        allTasks.push(...room.tasks)
+      })
+      
+      // Head to next incomplete task room
+      const nextTaskObj = agent.assignedTasks
+        .map(taskId => allTasks.find(t => t.id === taskId))
+        .find(t => t && !t.isComplete && t.roomId !== agent.currentRoom)
+      
+      console.log(`${agent.name} nextTaskObj:`, nextTaskObj)
+      if (nextTaskObj) return nextTaskObj.roomId
+      
+      // All tasks done — wander randomly
+      console.log(`${agent.name} has no valid tasks, wandering randomly`)
+      const rooms = Object.keys(this.rooms).filter(r => r !== agent.currentRoom)
+      return rooms[Math.floor(Math.random() * rooms.length)]
+    }
+
+    if (agent.role === 'impostor') {
+      // Hunt room with most crewmates
+      const target = Object.values(this.rooms)
+        .filter(r => r.id !== agent.currentRoom)
+        .sort((a, b) => b.agents.size - a.agents.size)[0]
+      console.log(`${agent.name} (impostor) hunting target:`, target?.id || 'none')
+      return target ? target.id : null
+    }
+  }
+
+  // Game tick - called each frame/time step
+  tick() {
+    console.log(`=== TICK ${this.gameTick} - Phase: ${this.phase} ===`);
+    
+    if (this.phase !== 'roaming') {
+      console.log('Tick skipped - not in roaming phase');
+      return;
+    }
+    
+    this.gameTick++;
+    console.log(`Processing ${this.agents.length} agents`);
+    
+    // Move all alive agents
+    const aliveAgents = this.agents.filter(a => a.alive);
+    console.log(`Alive agents: ${aliveAgents.length}, moveAgent exists: ${typeof this.moveAgent}`);
+    aliveAgents.forEach((agent, index) => {
+      console.log(`About to call moveAgent for agent ${index + 1}: ${agent.name}`);
+      this.moveAgent(agent);
+    });
+    
+    // Update UI
+    this.updateAgentPanel();
+    
+    // Update agent perceptions
+    this.updatePerception();
+    
+    // Update suspicion scores
+    this.updateSuspicions();
+  }
+
+  updateSuspicions() {
+    const impostors = this.agents.filter(a => a.role === 'impostor' && a.alive)
+
+    for (const agent of this.agents.filter(a => a.alive)) {
+      for (const other of this.agents.filter(a => a.alive && a.id !== agent.id)) {
+
+        // Sharing a room with someone raises mild suspicion over time
+        if (agent.currentRoom === other.currentRoom) {
+          // But less if they're visibly doing a task
+          const doingTask = other.currentTask && other.currentTask.roomId === other.currentRoom
+          const delta = doingTask ? 0.05 : 0.15
+          agent.suspicions[other.name] = (agent.suspicions[other.name] || 0) + delta
+        }
+
+        // Being alone with someone is more suspicious
+        const roomAgents = this.getAgentsInRoom(agent.currentRoom)
+        if (roomAgents.length === 2 && roomAgents.some(a => a.id === other.id)) {
+          agent.suspicions[other.name] = (agent.suspicions[other.name] || 0) + 0.3
+        }
+      }
+
+      // Cap all suspicion scores at 10
+      for (const name of Object.keys(agent.suspicions)) {
+        agent.suspicions[name] = Math.min(10, agent.suspicions[name])
+      }
+    }
+  }
+
+  updatePerception() {
+    for (const agent of this.agents.filter(a => a.alive)) {
+      const visibleRooms = [
+        agent.currentRoom,
+        ...this.getAdjacentRooms(agent.currentRoom)
+      ]
+
+      for (const roomId of visibleRooms) {
+        const agentsHere = this.getAgentsInRoom(roomId)
+        
+        for (const other of agentsHere) {
+          if (other.id === agent.id) continue
+        
+          // See someone in same room
+          if (roomId === agent.currentRoom) {
+            agent.addMemory({
+              tick: this.gameTick,
+              type: 'saw',
+              subject: other.name,
+              location: roomId,
+              detail: `saw ${other.name} in ${this.getRoom(roomId).name}` 
+            })
+          }
+
+          // See someone doing task
+          if (other.currentTask && other.currentTask.roomId === roomId) {
+            agent.addMemory({
+              tick: this.gameTick,
+              type: 'task_witness',
+              subject: other.name,
+              detail: `${other.name} appeared to work in ${this.getRoom(roomId).name}` 
+            })
+            // Witnessing tasks lowers suspicion
+            agent.suspicions[other.name] = Math.max(
+              0, (agent.suspicions[other.name] || 0) - 0.5
+            )
+          }
+        }
+
+        // See a dead body
+        if (this.getRoom(roomId).hasBody && !this.pendingMeeting) {
+          agent.addMemory({
+            tick: this.gameTick,
+            type: 'body',
+            detail: `found body of ${this.getRoom(roomId).bodyOf} in ${this.getRoom(roomId).name}` 
+          })
+          this.pendingMeeting = true
+          this.bodyFound = this.getRoom(roomId).bodyOf
+          this.logEvent('meeting', `${agent.name} found a body in ${this.getRoom(roomId).name}!`)
+        }
+    }
   }
 
   initializeTasks() {
@@ -581,29 +1116,7 @@ class WorldState {
     }
   }
 
-  moveAgent(agent, newRoomId) {
-    const oldRoomId = agent.currentRoom;
-    
-    // Remove from old room
-    if (oldRoomId) {
-      const oldRoom = this.getRoom(oldRoomId);
-      if (oldRoom) {
-        oldRoom.removeAgent(agent.id);
-      }
-    }
-    
-    // Add to new room
-    const newRoom = this.getRoom(newRoomId);
-    if (newRoom) {
-      agent.currentRoom = newRoomId;
-      newRoom.addAgent(agent.id);
-      this.logEvent('move', `${agent.name} moved to ${newRoomId}`, [agent]);
-      return true;
-    }
-    
-    return false;
-  }
-
+  
   completeTask(agent, task) {
     if (!agent.alive) return false;
     
@@ -619,7 +1132,7 @@ class WorldState {
     
     return true;
   }
-}
+} // End of WorldState class
 
 // Create global world instance
 window.WORLD = new WorldState();
