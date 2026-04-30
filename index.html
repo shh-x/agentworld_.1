@@ -659,15 +659,32 @@
 
         // Control buttons
         document.getElementById('start-btn').addEventListener('click', () => {
+            console.log('START BUTTON CLICKED');
             isPaused = false;
             addLog('Simulation started', 'system');
+            console.log('WORLD exists:', !!window.WORLD);
             if (window.WORLD) {
+                console.log('WORLD.agents.length:', window.WORLD.agents.length);
+                console.log('WORLD.phase:', window.WORLD.phase);
                 // Spawn agents if they haven't been spawned yet
                 if (window.WORLD.agents.length === 0) {
                     console.log('START: Spawning agents automatically...');
-                    window.WORLD.spawnAgents();
+                    try {
+                        window.WORLD.spawnAgents();
+                        console.log('spawnAgents completed, agent count:', window.WORLD.agents.length);
+                    } catch (error) {
+                        console.error('Error in spawnAgents:', error);
+                    }
                 }
-                window.WORLD.setPhase('roaming');
+                console.log('Setting phase to roaming...');
+                try {
+                    window.WORLD.setPhase('roaming');
+                    console.log('Phase set to:', window.WORLD.phase);
+                } catch (error) {
+                    console.error('Error in setPhase:', error);
+                }
+            } else {
+                console.error('WORLD not found!');
             }
         });
 
@@ -1001,7 +1018,8 @@
 
         // Agent mesh creation function
         window.spawnAgentMesh = function(agent) {
-            console.log('Creating mesh for:', agent.name, 'color:', agent.color)
+            console.log('=== SPAWNING MESH FOR ===', agent.name, 'id:', agent.id, 'color:', agent.color)
+            console.log('Current agentMeshes size before spawn:', window.agentMeshes?.size || 0)
             
             // Create agent group
             const agentGroup = new THREE.Group();
@@ -1063,6 +1081,8 @@
             const glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
             glowRing.position.y = 0.05;
             glowRing.rotation.x = Math.PI / 2; // Lay flat
+            glowRing.userData.isGlowRing = true;
+            glowRing.userData.pulseSpeed = 0.002; // Default pulse speed
             
             // Add all parts to group
             agentGroup.add(body);
@@ -1105,11 +1125,17 @@
             console.log('Mesh added to scene for:', agent.name, 'position:', agentGroup.position)
             console.log('Total scene children:', scene.children.length)
             agentMeshes.set(agent.id, agentGroup);
+            console.log('Mesh stored in agentMeshes Map, new size:', agentMeshes.size)
+            console.log('agentMeshes keys after spawn:', Array.from(agentMeshes.keys()))
+            
+            // Verify mesh was stored correctly
+            const storedMesh = agentMeshes.get(agent.id)
+            console.log('Verification - mesh retrieved from Map:', !!storedMesh)
             
             // Store mesh reference on agent object
             agent.mesh = agentGroup;
             
-            console.log(`Created detailed 3D mesh for ${agent.name} in ${agent.currentRoom}`);
+            console.log(`✅ SUCCESS: Created detailed 3D mesh for ${agent.name} in ${agent.currentRoom}`);
         };
 
         // Update agent mesh position when moving between rooms
@@ -1225,10 +1251,19 @@
                 light.intensity = 0.3 + Math.sin(time * 3 + i) * 0.2;
             });
             
-            // Animate connection lines with pulsing effect
+            // Animate glow rings with pulsing effect
             connectionLines.forEach((line, i) => {
                 const material = line.material;
                 material.opacity = 0.3 + Math.sin(time * 2 + i * 0.5) * 0.3;
+            });
+            
+            // Animate agent glow rings with suspicion-based pulse speed
+            window.agentMeshes?.forEach((agentGroup, agentId) => {
+                const glowRing = agentGroup.children.find(child => child.userData.isGlowRing);
+                if (glowRing) {
+                    const pulseSpeed = glowRing.userData.pulseSpeed || 0.002;
+                    glowRing.material.opacity = 0.3 + Math.sin(time * (1/pulseSpeed)) * 0.3;
+                }
             });
             
             // Smooth agent movement every frame

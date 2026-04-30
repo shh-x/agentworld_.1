@@ -302,7 +302,13 @@ class WorldState {
       }
       
       // 6. Create 3D mesh for agent
-      this.spawnAgentMesh(agent);
+      console.log(`About to spawn mesh for agent ${index}: ${agent.name}`)
+      try {
+        this.spawnAgentMesh(agent);
+        console.log(`spawnAgentMesh completed for ${agent.name}`)
+      } catch (error) {
+        console.error(`Error spawning mesh for ${agent.name}:`, error)
+      }
     });
     
     // 7. Update UI
@@ -583,8 +589,193 @@ class WorldState {
     // Update agent perceptions
     this.updatePerception();
     
+    // Update suspicion visuals
+    this.updateSuspicionVisuals();
+    
     // Update suspicion scores
     this.updateSuspicions();
+    
+    // Process kills
+    this.processKills();
+  }
+
+  updateSuspicionVisuals() {
+    // Calculate average suspicion for each agent
+    for (const agent of this.agents.filter(a => a.alive)) {
+      const aliveAgents = this.agents.filter(a => a.alive);
+      let totalSuspicion = 0;
+      let count = 0;
+      
+      for (const other of aliveAgents) {
+        if (other.id !== agent.id && other.suspicions[agent.name]) {
+          totalSuspicion += other.suspicions[agent.name];
+          count++;
+        }
+      }
+      
+      agent.avgSuspicion = count > 0 ? totalSuspicion / count : 0;
+      
+      // Update UI suspicion bar
+      this.updateAgentSuspicionBar(agent);
+      
+      // Update 3D scene visuals
+      this.updateAgentSuspicionVisuals(agent);
+    }
+  }
+
+  updateAgentSuspicionBar(agent) {
+    const agentCard = document.querySelector(`[data-agent-id="${agent.id}"]`);
+    if (!agentCard) return;
+    
+    // Remove existing suspicion bar if any
+    const existingBar = agentCard.querySelector('.suspicion-bar');
+    if (existingBar) existingBar.remove();
+    
+    // Create suspicion bar container
+    const suspicionContainer = document.createElement('div');
+    suspicionContainer.className = 'suspicion-container';
+    suspicionContainer.style.cssText = `
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: bold;
+    `;
+    
+    // Create suspicion bar
+    const suspicionBar = document.createElement('div');
+    suspicionBar.className = 'suspicion-bar';
+    const suspicionPercent = Math.min((agent.avgSuspicion / 10) * 100, 100);
+    
+    // Color based on suspicion level
+    let color = '#4caf50'; // green
+    if (agent.avgSuspicion >= 6) color = '#f44336'; // red
+    else if (agent.avgSuspicion >= 3) color = '#ff9800'; // yellow
+    
+    suspicionBar.style.cssText = `
+      width: 100%;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+    `;
+    
+    const suspicionFill = document.createElement('div');
+    suspicionFill.style.cssText = `
+      height: 100%;
+      width: ${suspicionPercent}%;
+      background: ${color};
+      transition: width 0.3s ease;
+      border-radius: 3px;
+    `;
+    
+    suspicionBar.appendChild(suspicionFill);
+    
+    // Add label
+    const suspicionLabel = document.createElement('div');
+    suspicionLabel.textContent = `SUSPICION: ${agent.avgSuspicion.toFixed(1)}`;
+    suspicionLabel.style.cssText = `color: ${color};`;
+    
+    suspicionContainer.appendChild(suspicionLabel);
+    suspicionContainer.appendChild(suspicionBar);
+    agentCard.appendChild(suspicionContainer);
+  }
+
+  updateAgentSuspicionVisuals(agent) {
+    const mesh = window.agentMeshes?.get(agent.id);
+    if (!mesh) return;
+    
+    // Update glow ring color
+    const glowRing = mesh.children.find(child => child.userData.isGlowRing);
+    if (glowRing) {
+      if (agent.avgSuspicion > 5) {
+        // Turn red for suspicious agents
+        glowRing.material.color.setHex(0xff0000);
+        // Speed up pulse animation
+        glowRing.userData.pulseSpeed = 0.006; // Faster pulse
+      } else {
+        // Return to agent color for normal agents
+        glowRing.material.color.setHex(agent.color);
+        glowRing.userData.pulseSpeed = 0.002; // Normal pulse
+      }
+    }
+    
+    // Add/remove red point light for highly suspicious agents
+    const existingLight = mesh.children.find(child => child.userData.isSuspicionLight);
+    
+    if (agent.avgSuspicion > 8) {
+      if (!existingLight) {
+        // Add red point light
+        const suspicionLight = new THREE.PointLight(0xff0000, (agent.avgSuspicion - 8) * 0.5, 3);
+        suspicionLight.position.set(0, 2, 0);
+        suspicionLight.userData.isSuspicionLight = true;
+        mesh.add(suspicionLight);
+      } else {
+        // Update existing light intensity
+        existingLight.intensity = (agent.avgSuspicion - 8) * 0.5;
+      }
+    } else if (existingLight) {
+      // Remove light if suspicion drops
+      mesh.remove(existingLight);
+    }
+  }
+
+  processKills() {
+    // ...
+    for (const imp of this.agents.filter(a => a.role === 'impostor' && a.alive)) {
+      if (imp.killCooldown > 0) { 
+        imp.killCooldown--; 
+        continue;
+      }
+
+      const targets = this.getAgentsInRoom(imp.currentRoom)
+        .filter(a => a.role === 'crewmate' && a.id !== imp.id)
+
+      if (targets.length === 0) continue
+
+      // Pick weakest suspicion target (least likely to be believed)
+      const victim = targets.sort((a,b) =>
+        (imp.suspicions[a.name]||0) - (imp.suspicions[b.name]||0)
+      )[0]
+
+      // Kill
+      victim.alive = false
+      imp.killCooldown = window.GAME_CONFIG ? window.GAME_CONFIG.KILL_COOLDOWN_TICKS : 4
+      this.getRoom(imp.currentRoom).hasBody = true
+      this.getRoom(imp.currentRoom).bodyOf = victim.name
+
+      this.logEvent('kill', `${imp.name} killed ${victim.name} in ${this.getRoom(imp.currentRoom).name}`)
+
+      // Check for witnesses in same room
+      const witnesses = this.getAgentsInRoom(imp.currentRoom)
+        .filter(a => a.alive && a.id !== imp.id && a.id !== victim.id)
+
+      for (const w of witnesses) {
+        w.addMemory({
+          tick: this.gameTick,
+          type: 'witnessed_kill',
+          subject: imp.name,
+          detail: `SAW ${imp.name} kill ${victim.name} in ${this.getRoom(imp.currentRoom).name}` 
+        })
+        w.raiseSuspicion(imp.name, 8)  // very high — they saw it
+        this.logEvent('system', `${w.name} witnessed the kill!`)
+        this.pendingMeeting = true
+        this.bodyFound = victim.name
+      }
+
+      // Adjacent room witnesses (heard something)
+      const adjacent = this.getAdjacentRooms(imp.currentRoom)
+      for (const roomId of adjacent) {
+        for (const a of this.getAgentsInRoom(roomId)) {
+          if (!a.alive) continue
+          a.addMemory({
+            tick: this.gameTick,
+            type: 'heard',
+            detail: `heard something suspicious near ${this.getRoom(imp.currentRoom).name}` 
+          })
+          a.raiseSuspicion(imp.name, 1.5)
+        }
+      }
+    }
   }
 
   updateSuspicions() {
@@ -636,7 +827,7 @@ class WorldState {
               subject: other.name,
               location: roomId,
               detail: `saw ${other.name} in ${this.getRoom(roomId).name}` 
-            })
+            });
           }
 
           // See someone doing task
@@ -646,11 +837,11 @@ class WorldState {
               type: 'task_witness',
               subject: other.name,
               detail: `${other.name} appeared to work in ${this.getRoom(roomId).name}` 
-            })
+            });
             // Witnessing tasks lowers suspicion
             agent.suspicions[other.name] = Math.max(
               0, (agent.suspicions[other.name] || 0) - 0.5
-            )
+            );
           }
         }
 
@@ -660,11 +851,12 @@ class WorldState {
             tick: this.gameTick,
             type: 'body',
             detail: `found body of ${this.getRoom(roomId).bodyOf} in ${this.getRoom(roomId).name}` 
-          })
-          this.pendingMeeting = true
-          this.bodyFound = this.getRoom(roomId).bodyOf
-          this.logEvent('meeting', `${agent.name} found a body in ${this.getRoom(roomId).name}!`)
+          });
+          this.pendingMeeting = true;
+          this.bodyFound = this.getRoom(roomId).bodyOf;
+          this.logEvent('meeting', `${agent.name} found a body in ${this.getRoom(roomId).name}!`);
         }
+      }
     }
   }
 
@@ -766,13 +958,15 @@ class WorldState {
     document.addEventListener('agentDied', (event) => {
       const { agent, killer, room } = event.detail;
       this.updateAgentPanel();
-      this.checkWinCondition();
+      this.checkWinConditions();
+      this.updateSuspicionVisuals();
     });
 
     // Task completed listener
     document.addEventListener('taskDone', (event) => {
       const { agent, task } = event.detail;
       this.updateTaskHUD();
+      // ...
       this.checkWinCondition();
     });
 
@@ -849,7 +1043,7 @@ class WorldState {
       else if (healthPercent <= 60) healthColor = '#ffff00'; // yellow
       
       agentHTML += `
-        <div class="agent-card ${isDead ? 'dead' : ''}">
+        <div class="agent-card ${isDead ? 'dead' : ''}" data-agent-id="${agent.id}">
           <div class="agent-card-header">
             <div class="agent-info">
               <span class="agent-dot" style="background-color: ${isDead ? '#ff4444' : agentColor}">${isDead ? '✕' : ''}</span>
