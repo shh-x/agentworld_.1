@@ -677,14 +677,21 @@
                     }
                 }
                 console.log('Setting phase to roaming...');
-                try {
-                    window.WORLD.setPhase('roaming');
-                    console.log('Phase set to:', window.WORLD.phase);
-                } catch (error) {
-                    console.error('Error in setPhase:', error);
+                window.WORLD.setPhase('roaming');
+                console.log('Phase set to roaming, current phase:', window.WORLD.phase);
+                
+                // Start tick timer if not already running
+                if (!tickTimer) {
+                    console.log('Starting tick timer...');
+                    tickTimer = setInterval(() => {
+                        if (window.WORLD && window.WORLD.phase === 'roaming') {
+                            window.WORLD.tick();
+                        }
+                    }, 1000); // Advance tick every second
                 }
             } else {
-                console.error('WORLD not found!');
+                console.error('WORLD not available when start button clicked');
+                addLog('Error: World not ready', 'system');
             }
         });
 
@@ -1211,7 +1218,7 @@
             // Game tick system
             if (window.WORLD && window.WORLD.phase === 'roaming') {
                 if (time - lastTickTime >= tickInterval / 1000) {
-                    window.WORLD.tick();
+                    window.WORLD.advanceTick();
                     lastTickTime = time;
                 }
             }
@@ -1299,6 +1306,704 @@
         console.log('Three.js scene initialized successfully');
         console.log('Camera position:', camera.position);
         console.log('Scene background color:', scene.background.getHexString());
+    </script>
+
+    <!-- Emergency Meeting Overlay -->
+    <div id="meeting-overlay" class="meeting-overlay" style="display: none;">
+        <div class="meeting-container">
+            <div class="meeting-header">
+                <h2>🚨 EMERGENCY MEETING</h2>
+                <div id="meeting-reason" class="meeting-reason">Body found: VERA</div>
+            </div>
+            
+            <div class="meeting-divider"></div>
+            
+            <div id="meeting-statements" class="meeting-statements">
+                <!-- Statements will be added here dynamically -->
+            </div>
+            
+            <div class="meeting-divider"></div>
+            
+            <div id="meeting-votes" class="meeting-votes">
+                <h3>— VOTE TALLY —</h3>
+                <div id="vote-tally" class="vote-tally">
+                    <!-- Vote bars will be added here dynamically -->
+                </div>
+            </div>
+            
+            <div class="meeting-divider"></div>
+            
+            <div id="meeting-result" class="meeting-result" style="display: none;">
+                <div id="ejected-player" class="ejected-player">💀 KAGE was ejected.</div>
+                <div id="ejected-verdict" class="ejected-verdict">✓ They WERE the impostor.</div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .meeting-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-family: 'Courier New', monospace;
+        }
+
+        .meeting-container {
+            background: rgba(20, 20, 30, 0.95);
+            border: 2px solid #ab47bc;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px rgba(171, 71, 188, 0.4);
+        }
+
+        .meeting-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .meeting-header h2 {
+            color: #ab47bc;
+            font-size: 28px;
+            margin: 0;
+            text-shadow: 0 0 10px rgba(171, 71, 188, 0.6);
+        }
+
+        .meeting-reason {
+            color: #ff6b6b;
+            font-size: 16px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .meeting-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ab47bc, transparent);
+            margin: 20px 0;
+        }
+
+        .meeting-statements {
+            min-height: 150px;
+            margin: 20px 0;
+        }
+
+        .statement {
+            color: #ffffff;
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(171, 71, 188, 0.1);
+            border-left: 3px solid #ab47bc;
+            border-radius: 4px;
+            opacity: 0;
+            transform: translateX(-20px);
+            animation: slideIn 0.3s forwards;
+        }
+
+        .statement .speaker {
+            color: #ab47bc;
+            font-weight: bold;
+        }
+
+        @keyframes slideIn {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .meeting-votes {
+            margin: 20px 0;
+        }
+
+        .meeting-votes h3 {
+            color: #ab47bc;
+            text-align: center;
+            margin: 0 0 15px 0;
+        }
+
+        .vote-tally {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .vote-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .vote-name {
+            color: #ffffff;
+            width: 80px;
+            font-weight: bold;
+        }
+
+        .vote-bar-container {
+            flex: 1;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .vote-bar {
+            height: 100%;
+            background: linear-gradient(to right, #ab47bc, #8e24aa);
+            border-radius: 10px;
+            width: 0;
+            transition: width 1s ease-out;
+        }
+
+        .vote-count {
+            color: #ffffff;
+            margin-left: 10px;
+            font-size: 14px;
+        }
+
+        .meeting-result {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .ejected-player {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .ejected-verdict {
+            font-size: 16px;
+        }
+
+        .ejected-impostor {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+
+        .ejected-innocent {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            color: #f44336;
+        }
+    </style>
+
+    <script>
+        // Meeting system
+        let meetingInProgress = false;
+
+        async function showEmergencyMeeting(reason, bodyFound) {
+            if (meetingInProgress) return;
+            meetingInProgress = true;
+
+            const overlay = document.getElementById('meeting-overlay');
+            const reasonElement = document.getElementById('meeting-reason');
+            const statementsContainer = document.getElementById('meeting-statements');
+            const voteTally = document.getElementById('vote-tally');
+            const resultContainer = document.getElementById('meeting-result');
+
+            // Clear previous content
+            statementsContainer.innerHTML = '';
+            voteTally.innerHTML = '';
+            resultContainer.style.display = 'none';
+
+            // Set meeting reason
+            reasonElement.textContent = reason;
+
+            // Show overlay
+            overlay.style.display = 'flex';
+
+            // Get statements from alive agents
+            const aliveAgents = WORLD.agents.filter(a => a.alive);
+            const statements = [];
+
+            // Stream statements with 400ms delay
+            for (let i = 0; i < aliveAgents.length; i++) {
+                const agent = aliveAgents[i];
+                const statement = getAgentStatement(agent, { bodyFound });
+                statements.push({ name: agent.name, statement });
+                
+                // Add statement to UI with animation
+                const statementElement = document.createElement('div');
+                statementElement.className = 'statement';
+                statementElement.innerHTML = `<span class="speaker">${agent.name}:</span> "${statement}"`;
+                statementElement.style.animationDelay = `${i * 0.4}s`;
+                statementsContainer.appendChild(statementElement);
+
+                // Wait for animation
+                await new Promise(resolve => setTimeout(resolve, 400));
+            }
+
+            // Wait a bit for statements to finish
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Run voting
+            const votes = runMeetingVotes(aliveAgents, { aliveAgents });
+
+            // Show vote tally
+            const voteCounts = {};
+            votes.forEach(vote => {
+                if (vote.vote) {
+                    voteCounts[vote.vote] = (voteCounts[vote.vote] || 0) + 1;
+                }
+            });
+
+            // Create vote bars with animation
+            const maxVotes = Math.max(...Object.values(voteCounts));
+            Object.entries(voteCounts).forEach(([name, count], index) => {
+                const voteItem = document.createElement('div');
+                voteItem.className = 'vote-item';
+                voteItem.innerHTML = `
+                    <div class="vote-name">${name}</div>
+                    <div class="vote-bar-container">
+                        <div class="vote-bar" style="width: ${(count / maxVotes) * 100}%"></div>
+                    </div>
+                    <div class="vote-count">${count} vote${count !== 1 ? 's' : ''}</div>
+                `;
+                voteTally.appendChild(voteItem);
+            });
+
+            // Wait for votes to display
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Determine ejected player
+            const ejected = Object.entries(voteCounts)
+                .sort((a, b) => b[1] - a[1])[0];
+
+            if (ejected) {
+                const [ejectedName, voteCount] = ejected;
+                const ejectedAgent = WORLD.agents.find(a => a.name === ejectedName);
+                const wasImpostor = ejectedAgent?.role === 'impostor';
+
+                // Show result
+                const ejectedPlayerElement = document.getElementById('ejected-player');
+                const ejectedVerdictElement = document.getElementById('ejected-verdict');
+                
+                ejectedPlayerElement.textContent = `💀 ${ejectedName} was ejected.`;
+                ejectedVerdictElement.textContent = wasImpostor 
+                    ? '✓ They WERE the impostor.' 
+                    : '✗ They were NOT the impostor.';
+
+                resultContainer.className = 'meeting-result ' + (wasImpostor ? 'ejected-impostor' : 'ejected-innocent');
+                resultContainer.style.display = 'block';
+
+                // Update game state
+                if (ejectedAgent) {
+                    ejectedAgent.alive = false;
+                    document.dispatchEvent(new CustomEvent('agentDied', {
+                        detail: { agent: ejectedAgent, killer: null, room: 'meeting' }
+                    }));
+                }
+            }
+
+            // Auto-dismiss after 3 seconds
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                meetingInProgress = false;
+                
+                // Resume game
+                if (WORLD) {
+                    WORLD.phase = 'roaming';
+                    WORLD.pendingMeeting = false;
+                    WORLD.bodyFound = null;
+                }
+            }, 3000);
+        }
+
+        // Listen for pending meetings and trigger complete sequence
+        setInterval(() => {
+            if (WORLD && WORLD.pendingMeeting && !meetingInProgress) {
+                meetingInProgress = true;
+                triggerMeeting();
+            }
+        }, 1000);
+
+        // Export for testing
+        window.showEmergencyMeeting = showEmergencyMeeting;
+    </script>
+
+    <!-- Game Over Overlay -->
+    <div id="gameover-overlay" class="gameover-overlay" style="display: none;">
+        <div class="gameover-container">
+            <div id="gameover-title" class="gameover-title">CREWMATES WIN</div>
+            <div id="gameover-reason" class="gameover-reason">All tasks completed</div>
+            
+            <div class="gameover-divider"></div>
+            
+            <div class="gameover-section">
+                <h3>ROLE REVEAL</h3>
+                <div id="role-reveal" class="role-reveal">
+                    <!-- Roles will be added here -->
+                </div>
+            </div>
+            
+            <div class="gameover-divider"></div>
+            
+            <div class="gameover-stats">
+                <h3>GAME STATISTICS</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Rounds Survived:</span>
+                        <span id="stat-rounds" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Tasks Completed:</span>
+                        <span id="stat-tasks" class="stat-value">0/18</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Kills Made:</span>
+                        <span id="stat-kills" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Correct Ejection:</span>
+                        <span id="stat-ejection" class="stat-value">No</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="gameover-divider"></div>
+            
+            <button id="play-again-btn" class="play-again-btn" onclick="resetGame()">
+                ▶ PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <style>
+        .gameover-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            font-family: 'Courier New', monospace;
+        }
+
+        .gameover-container {
+            background: rgba(20, 20, 30, 0.98);
+            border: 2px solid #ab47bc;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: center;
+            transform: scale(0.8);
+            opacity: 0;
+            animation: gameoverReveal 0.6s ease-out forwards;
+            box-shadow: 0 0 60px rgba(171, 71, 188, 0.6);
+        }
+
+        @keyframes gameoverReveal {
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .gameover-title {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .gameover-title.crewmate-win {
+            color: #00bcd4; /* Cyan */
+        }
+
+        .gameover-title.impostor-win {
+            color: #f44336; /* Red */
+        }
+
+        .gameover-reason {
+            font-size: 20px;
+            color: #ffffff;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .gameover-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ab47bc, transparent);
+            margin: 25px 0;
+        }
+
+        .gameover-section h3 {
+            color: #ab47bc;
+            font-size: 18px;
+            margin: 0 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .role-reveal {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .role-item {
+            background: rgba(171, 71, 188, 0.1);
+            border: 1px solid rgba(171, 71, 188, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .role-name {
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .role-status {
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .role-status.crewmate {
+            color: #4caf50;
+        }
+
+        .role-status.impostor {
+            color: #f44336;
+        }
+
+        .role-status.dead {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+
+        .gameover-stats {
+            margin: 20px 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-label {
+            color: #ffffff;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .stat-value {
+            color: #ab47bc;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .play-again-btn {
+            background: linear-gradient(135deg, #ab47bc, #8e24aa);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(171, 71, 188, 0.4);
+        }
+
+        .play-again-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(171, 71, 188, 0.6);
+            background: linear-gradient(135deg, #8e24aa, #6a1b9a);
+        }
+
+        .play-again-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+
+    <script>
+        let tickTimer = null;
+
+        function endGame(winner) {
+            try {
+                console.log('[ENDGAME] Starting end game for winner:', winner)
+                WORLD.setPhase('gameover')
+                if (tickTimer) clearInterval(tickTimer)
+
+                const isCrewWin = winner === 'crewmates'
+                
+                // Calculate stats
+                const totalTasks = WORLD.getTotalTasks()
+                const completedTasks = WORLD.getCompletedTasks()
+                const totalKills = WORLD.agents.filter(a => !a.alive && a.role === 'crewmate').length
+                const rounds = WORLD.gameTick
+                
+                console.log('[ENDGAME] Stats:', { totalTasks, completedTasks, totalKills, rounds })
+                
+                // Check if correct ejection happened
+                const ejectedAgents = WORLD.agents.filter(a => !a.alive)
+                const correctEjection = ejectedAgents.some(a => a.role === 'impostor')
+
+                // Update title and reason
+                const titleElement = document.getElementById('gameover-title')
+                const reasonElement = document.getElementById('gameover-reason')
+                
+                if (!titleElement || !reasonElement) {
+                    console.error('[ENDGAME] Missing UI elements')
+                    return
+                }
+                
+                titleElement.textContent = isCrewWin ? 'CREWMATES WIN' : 'IMPOSTORS WIN'
+                titleElement.className = 'gameover-title ' + (isCrewWin ? 'crewmate-win' : 'impostor-win')
+                
+                // Determine win reason
+                let reason = ''
+                if (isCrewWin) {
+                    if (completedTasks === totalTasks) {
+                        reason = 'All tasks completed'
+                    } else if (WORLD.agents.filter(a => a.alive && a.role === 'impostor').length === 0) {
+                        reason = 'All impostors ejected'
+                    } else {
+                        reason = 'Crewmates victory'
+                    }
+                } else {
+                    const aliveImpostors = WORLD.agents.filter(a => a.alive && a.role === 'impostor').length
+                    const aliveCrewmates = WORLD.agents.filter(a => a.alive && a.role === 'crewmate').length
+                    if (aliveImpostors >= aliveCrewmates) {
+                        reason = 'Impostors outnumber crewmates'
+                    } else {
+                        reason = 'Impostors victory'
+                    }
+                }
+                reasonElement.textContent = reason
+
+                // Show role reveal
+                const roleReveal = document.getElementById('role-reveal')
+                if (roleReveal) {
+                    roleReveal.innerHTML = ''
+                    
+                    WORLD.agents.forEach(agent => {
+                        const roleItem = document.createElement('div')
+                        roleItem.className = 'role-item'
+                        roleItem.innerHTML = `
+                            <div class="role-name">${agent.name}</div>
+                            <div class="role-status ${agent.role} ${!agent.alive ? 'dead' : ''}">
+                                ${agent.role === 'impostor' ? 'IMPOSTOR' : 'CREWMATE'} ${!agent.alive ? '(dead)' : '(alive)'}
+                            </div>
+                        `
+                        roleReveal.appendChild(roleItem)
+                    })
+                }
+
+                // Update stats
+                const roundsElement = document.getElementById('stat-rounds')
+                const tasksElement = document.getElementById('stat-tasks')
+                const killsElement = document.getElementById('stat-kills')
+                const ejectionElement = document.getElementById('stat-ejection')
+                
+                if (roundsElement) roundsElement.textContent = rounds
+                if (tasksElement) tasksElement.textContent = `${completedTasks}/${totalTasks}`
+                if (killsElement) killsElement.textContent = totalKills
+                if (ejectionElement) ejectionElement.textContent = correctEjection ? 'Yes' : 'No'
+
+                // Show overlay
+                const overlay = document.getElementById('gameover-overlay')
+                if (overlay) {
+                    overlay.style.display = 'flex'
+                    console.log('[ENDGAME] Overlay displayed successfully')
+                } else {
+                    console.error('[ENDGAME] Overlay element not found')
+                }
+            } catch (error) {
+                console.error('[ENDGAME] Error in endGame:', error)
+            }
+        }
+
+        function resetGame() {
+            // Hide overlay
+            document.getElementById('gameover-overlay').style.display = 'none'
+            
+            // Clear existing tick timer
+            if (tickTimer) clearInterval(tickTimer)
+            
+            // Reset world state
+            WORLD.phase = 'idle'
+            WORLD.gameTick = 0
+            WORLD.winner = null
+            WORLD.events = []
+            WORLD.pendingMeeting = false
+            WORLD.bodyFound = null
+            
+            // Clear agents and rooms
+            WORLD.agents = []
+            Object.keys(WORLD.rooms).forEach(roomId => {
+                WORLD.rooms[roomId].agents.clear()
+                WORLD.rooms[roomId].hasBody = false
+                WORLD.rooms[roomId].bodyOf = null
+            })
+            
+            // Clear 3D meshes
+            if (window.agentMeshes) {
+                window.agentMeshes.forEach(mesh => {
+                    window.scene?.remove(mesh)
+                })
+                window.agentMeshes.clear()
+            }
+            
+            // Respawn agents
+            WORLD.spawnAgents()
+            
+            // Update UI
+            WORLD.updateAgentPanel()
+            WORLD.updatePhaseHUD('idle')
+            
+            // Start tick timer
+            tickTimer = setInterval(() => {
+                if (window.WORLD && window.WORLD.phase === 'roaming') {
+                    window.WORLD.tick();
+                }
+            }, 1000) // Advance tick every second
+            
+            // Restart game loop
+            WORLD.setPhase('roaming')
+        }
+
+        window.endGame = endGame
+        window.resetGame = resetGame
     </script>
 </body>
 </html>

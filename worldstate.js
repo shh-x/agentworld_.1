@@ -1,3 +1,363 @@
+const LLM_CONFIG = {
+  provider: 'ollama',
+  ollamaUrl: 'http://localhost:11434/api/generate',
+  model: 'tinyllama',
+  maxTokens: 80,        // shorter = faster + less rambling
+  temperature: 0.4,     // lower = more predictable output
+}
+
+async function callLLM(prompt) {
+  try {
+    const res = await fetch(LLM_CONFIG.ollamaUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: LLM_CONFIG.model,
+        prompt: prompt,
+        stream: false,
+        options: {
+          num_predict: LLM_CONFIG.maxTokens,
+          temperature: LLM_CONFIG.temperature,
+          stop: ['\n', '.', '!', '?']  // stop at first sentence
+        }
+      })
+    })
+    const data = await res.json()
+    console.log('[LLM] tinyllama responded:', data.response)
+    return data.response.trim()
+  } catch(e) {
+    console.warn('[LLM] Failed, using fallback:', e.message)
+    return null
+  }
+}
+
+window.callLLM = callLLM
+window.LLM_CONFIG = LLM_CONFIG
+
+function getAgentStatement(agent, context) {
+  const aliveNames = WORLD.agents
+    .filter(a => a.alive && a.name !== agent.name)
+    .map(a => a.name)
+
+  const topSuspect = agent.getTopSuspect()?.[0]
+  const randomName = aliveNames[Math.floor(Math.random() * aliveNames.length)]
+  const memory = agent.memory[0]?.detail || null
+  const deadAgent = context.bodyFound || 'someone'
+
+  // IMPOSTOR — deflect blame
+  if (agent.role === 'impostor') {
+    const templates = [
+      `I was doing my tasks the whole time, ${randomName} was acting strange.`,
+      `I passed by ${randomName} right before ${deadAgent} was found.`,
+      `Something about ${randomName} seems off, they were alone near the body.`,
+      `Ask ${randomName} where they were, I saw them sneaking around.`,
+    ]
+    const statement = templates[Math.floor(Math.random() * templates.length)]
+    console.log(`[STATEMENT] ${agent.name} (impostor): ${statement}`)
+    return statement
+  }
+
+  // CREWMATE WITH MEMORY — use what they saw
+  if (memory && topSuspect) {
+    const templates = [
+      `I noticed ${topSuspect} nearby and ${memory}.`,
+      `I ${memory} and I think ${topSuspect} is responsible.`,
+      `Based on what I saw, ${topSuspect} cannot be trusted.`,
+    ]
+    const statement = templates[Math.floor(Math.random() * templates.length)]
+    console.log(`[STATEMENT] ${agent.name} (crewmate+memory): ${statement}`)
+    return statement
+  }
+
+  // CREWMATE WITH SUSPECT — no strong memory
+  if (topSuspect) {
+    const templates = [
+      `I think ${topSuspect} is suspicious, they were not doing tasks.`,
+      `${topSuspect} was alone when I passed through, watch them carefully.`,
+      `I do not fully trust ${topSuspect}, something feels wrong.`,
+    ]
+    const statement = templates[Math.floor(Math.random() * templates.length)]
+    console.log(`[STATEMENT] ${agent.name} (crewmate+suspect): ${statement}`)
+    return statement
+  }
+
+  // CREWMATE WITH NO INFO — generic
+  const templates = [
+    `I was just doing my tasks, I did not see anything suspicious.`,
+    `I have no information yet, we should hear from everyone first.`,
+    `I cannot say for sure, but we need to be careful voting wrong.`,
+  ]
+  const statement = templates[Math.floor(Math.random() * templates.length)]
+  console.log(`[STATEMENT] ${agent.name} (crewmate+noinfo): ${statement}`)
+  return statement
+}
+
+window.getAgentStatement = getAgentStatement
+
+function getAgentVote(agent, context) {
+  const validAgents = context.aliveAgents
+    .filter(a => a.name !== agent.name)
+
+  if (validAgents.length === 0) return { 
+    vote: null, reason: 'nobody to vote' 
+  }
+
+  // IMPOSTOR — vote out biggest threat
+  // (whoever suspects impostor most)
+  if (agent.role === 'impostor') {
+    const biggestThreat = validAgents
+      .filter(a => a.role === 'crewmate')
+      .sort((a, b) => 
+        (b.suspicions[agent.name] || 0) - 
+        (a.suspicions[agent.name] || 0)
+      )[0]
+
+    const vote = biggestThreat || validAgents[0]
+    console.log(`[VOTE] ${agent.name} (impostor) → ${vote.name}: eliminating threat`)
+    return {
+      vote: vote.name,
+      reason: 'they seem most suspicious to me'
+    }
+  }
+
+  // CREWMATE — vote by highest suspicion score
+  const sorted = [...validAgents].sort((a, b) =>
+    (agent.suspicions[b.name] || 0) - 
+    (agent.suspicions[a.name] || 0)
+  )
+
+  const topSuspect = sorted[0]
+  const score = agent.suspicions[topSuspect.name] || 0
+
+  console.log(`[VOTE] ${agent.name} → ${topSuspect.name} (score: ${score.toFixed(1)})`)
+  return {
+    vote: topSuspect.name,
+    reason: score > 5 ? 'strong evidence from observations' 
+          : score > 2 ? 'suspicious behavior noticed'
+          : 'gut feeling'
+  }
+}
+
+// Update runMeetingVotes to be sync now:
+function runMeetingVotes(aliveAgents, context) {
+  const votes = aliveAgents.map(agent => ({
+    voter: agent.name,
+    ...getAgentVote(agent, context)
+  }))
+  console.log('[MEETING] All votes:', votes)
+  return votes
+}
+
+window.getAgentVote = getAgentVote
+window.runMeetingVotes = runMeetingVotes
+
+// Meeting sequence functions
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function runMeetingStatements(aliveAgents, context) {
+  const statements = aliveAgents.map(agent => ({
+    name: agent.name,
+    statement: getAgentStatement(agent, context)
+  }))
+  return statements
+}
+
+async function displayStatement(statement) {
+  const statementsContainer = document.getElementById('meeting-statements');
+  const statementElement = document.createElement('div');
+  statementElement.className = 'statement';
+  statementElement.innerHTML = `<span class="speaker">${statement.name}:</span> "${statement.statement}"`;
+  statementElement.style.animationDelay = '0s';
+  statementsContainer.appendChild(statementElement);
+}
+
+async function displayVoteTally(tally) {
+  const voteTally = document.getElementById('vote-tally');
+  const maxVotes = Math.max(...Object.values(tally));
+  
+  Object.entries(tally).forEach(([name, count]) => {
+    const voteItem = document.createElement('div');
+    voteItem.className = 'vote-item';
+    voteItem.innerHTML = `
+      <div class="vote-name">${name}</div>
+      <div class="vote-bar-container">
+        <div class="vote-bar" style="width: ${(count / maxVotes) * 100}%"></div>
+      </div>
+      <div class="vote-count">${count} vote${count !== 1 ? 's' : ''}</div>
+    `;
+    voteTally.appendChild(voteItem);
+  });
+}
+
+function ejectAgent(agentName) {
+  return new Promise(resolve => {
+    const agent = WORLD.agents.find(a => a.name === agentName)
+    if (!agent) {
+      resolve();
+      return;
+    }
+
+    const wasImpostor = agent.role === 'impostor'
+    
+    // Update game state
+    agent.alive = false
+    WORLD.getRoom(agent.currentRoom).agents.delete(agent.id)
+
+    // Show result in UI
+    const resultContainer = document.getElementById('meeting-result');
+    const ejectedPlayerElement = document.getElementById('ejected-player');
+    const ejectedVerdictElement = document.getElementById('ejected-verdict');
+    
+    ejectedPlayerElement.textContent = `💀 ${agentName} was ejected.`;
+    ejectedVerdictElement.textContent = wasImpostor 
+      ? '✓ They WERE the impostor.' 
+      : '✗ They were NOT the impostor.';
+
+    resultContainer.className = 'meeting-result ' + (wasImpostor ? 'ejected-impostor' : 'ejected-innocent');
+    resultContainer.style.display = 'block';
+
+    // Get Three.js mesh for animation
+    const mesh = window.agentMeshes?.get(agent.id)
+    if (!mesh) {
+      // Fallback if no mesh found
+      WORLD.logEvent('eject', `${agentName} ejected — ${wasImpostor ? 'WAS impostor ✓' : 'was NOT impostor ✗'}`)
+      document.dispatchEvent(new CustomEvent('agentDied', {
+        detail: { agent, killer: null, room: 'meeting' }
+      }))
+      resolve()
+      return
+    }
+    
+    // Animation: float up + fade out + spin
+    const startY = mesh.position.y
+    const startTime = Date.now()
+    const duration = 2000
+    
+    function animateEject() {
+      const elapsed = Date.now() - startTime
+      const t = Math.min(elapsed / duration, 1)
+      
+      mesh.position.y = startY + t * 8          // float upward
+      mesh.rotation.y += 0.1                    // spin
+      mesh.children.forEach(c => {
+        if (c.material) c.material.opacity = 1 - t
+      })
+      
+      if (t < 1) {
+        requestAnimationFrame(animateEject)
+      } else {
+        // Remove from scene
+        window.scene?.remove(mesh)
+        window.agentMeshes?.delete(agent.id)
+        
+        // Log event and dispatch
+        WORLD.logEvent(
+          wasImpostor ? 'vote' : 'kill',
+          `${agentName} ejected — ${wasImpostor ? 'WAS impostor ✓' : 'was NOT impostor ✗'}` 
+        )
+        document.dispatchEvent(new CustomEvent('agentDied', {
+          detail: { agent, killer: null, room: 'meeting' }
+        }))
+        resolve()
+      }
+    }
+    animateEject()
+  })
+}
+
+async function showMeetingOverlay(context) {
+  const overlay = document.getElementById('meeting-overlay');
+  const reasonElement = document.getElementById('meeting-reason');
+  const statementsContainer = document.getElementById('meeting-statements');
+  const voteTally = document.getElementById('vote-tally');
+  const resultContainer = document.getElementById('meeting-result');
+
+  // Clear previous content
+  statementsContainer.innerHTML = '';
+  voteTally.innerHTML = '';
+  resultContainer.style.display = 'none';
+
+  // Set meeting reason
+  reasonElement.textContent = `Body found: ${context.bodyFound || 'Someone'}`;
+
+  // Show overlay
+  overlay.style.display = 'flex';
+}
+
+function hideMeetingOverlay() {
+  const overlay = document.getElementById('meeting-overlay');
+  overlay.style.display = 'none';
+}
+
+async function triggerMeeting() {
+  WORLD.setPhase('meeting')
+  WORLD.pendingMeeting = false
+  
+  const aliveAgents = WORLD.agents.filter(a => a.alive)
+  const context = {
+    aliveAgents,
+    bodyFound: WORLD.bodyFound,
+    tick: WORLD.gameTick
+  }
+
+  showMeetingOverlay(context)
+  
+  // 1. Get all statements in parallel
+  WORLD.setPhase('discussion')
+  const statements = await runMeetingStatements(aliveAgents, context)
+  
+  // 2. Display statements one by one
+  for (const s of statements) {
+    await displayStatement(s)
+    WORLD.logEvent('meeting', `${s.name}: "${s.statement.slice(0,50)}..."`)
+    await sleep(400)
+  }
+
+  // 3. Get all votes in parallel  
+  WORLD.setPhase('voting')
+  const votes = await runMeetingVotes(aliveAgents, context)
+  
+  // 4. Tally and display votes
+  const tally = {}
+  for (const v of votes) {
+    tally[v.vote] = (tally[v.vote] || 0) + 1
+    WORLD.logEvent('vote', `${v.voter} → ${v.vote} (${v.reason})`)
+  }
+  await displayVoteTally(tally)
+
+  // 5. Eject highest voted
+  const ejected = Object.entries(tally).sort((a,b)=>b[1]-a[1])[0]
+  if (ejected) await ejectAgent(ejected[0])
+  
+  // 6. Check win then resume
+  await sleep(3000)
+  hideMeetingOverlay()
+  WORLD.bodyFound = null
+  
+  const winner = WORLD.checkWinCondition()
+  if (winner) { return }
+  
+  WORLD.setPhase('roaming')
+}
+
+window.triggerMeeting = triggerMeeting
+window.showMeetingOverlay = showMeetingOverlay
+window.hideMeetingOverlay = hideMeetingOverlay
+
+function getFallbackStatement(agent) {
+  const fallbacks = {
+    NOVA: "I have a bad feeling about someone here.",
+    AXEL: "We need more evidence before voting.",
+    ZIRA: "Everyone should stay calm and work together.",
+    KAGE: "I was working alone the whole time.",
+    PULSE: "I didn't see anything unusual.",
+    VERA: "Someone here is lying and I'll find them!"
+  }
+  return fallbacks[agent.name] || "I'm not sure what to think."
+}
+
 // AGENT ROSTER - Available agents for spawning
 const AGENT_ROSTER = [
   { name: 'NOVA',  color: '#ef5350' },
@@ -7,6 +367,39 @@ const AGENT_ROSTER = [
   { name: 'PULSE', color: '#ab47bc' },
   { name: 'VERA',  color: '#26c6da' },
 ];
+
+const PERSONALITIES = {
+  NOVA:  {
+    type: 'paranoid',
+    trait: 'suspects everyone, jumps to conclusions',
+    voteStyle: 'votes first based on gut feeling'
+  },
+  AXEL:  {
+    type: 'analytical',
+    trait: 'logical, needs evidence before accusing',
+    voteStyle: 'only votes with strong proof'
+  },
+  ZIRA:  {
+    type: 'social',
+    trait: 'builds alliances, emotional reasoning',
+    voteStyle: 'votes with majority to avoid conflict'
+  },
+  KAGE:  {
+    type: 'deceptive',
+    trait: 'calm, calculated, deflects blame',
+    voteStyle: 'frames innocent agents strategically'
+  },
+  PULSE: {
+    type: 'passive',
+    trait: 'quiet, avoids conflict, rarely accuses',
+    voteStyle: 'follows crowd or skips'
+  },
+  VERA:  {
+    type: 'aggressive',
+    trait: 'confrontational, pushes hard on suspects',
+    voteStyle: 'campaigns loudly for their suspect'
+  },
+}
 
 // TASK SYSTEM - Individual task management
 class Task {
@@ -282,6 +675,9 @@ class WorldState {
         role,
         'cafeteria' // All agents start in cafeteria
       );
+      
+      // Attach personality
+      agent.personality = PERSONALITIES[agent.name];
       
       // 3. Assign tasks to crewmates (impostors get fake tasks)
       if (!isImpostor) {
@@ -943,7 +1339,7 @@ class WorldState {
     
     // Dispatch event for other systems
     document.dispatchEvent(new CustomEvent('phaseChange', { 
-      detail: { oldPhase, newPhase, tick: this.tick }
+      detail: { oldPhase, newPhase, tick: this.gameTick }
     }));
   }
 
@@ -958,7 +1354,7 @@ class WorldState {
     document.addEventListener('agentDied', (event) => {
       const { agent, killer, room } = event.detail;
       this.updateAgentPanel();
-      this.checkWinConditions();
+      this.checkWinCondition();
       this.updateSuspicionVisuals();
     });
 
@@ -1138,7 +1534,7 @@ class WorldState {
 
   logEvent(type, message, involvedAgents = []) {
     const event = {
-      tick: this.tick,
+      tick: this.gameTick,
       type,
       message,
       involvedAgents: involvedAgents.map(agent => agent.id),
@@ -1191,45 +1587,51 @@ class WorldState {
 
   checkWinCondition() {
     const aliveAgents = this.agents.filter(agent => agent.alive);
-    const aliveCrewmates = aliveAgents.filter(agent => !agent.isImpostor);
-    const aliveImpostors = aliveAgents.filter(agent => agent.isImpostor);
-    
+    const aliveCrewmates = aliveAgents.filter(agent => !agent.isImpostor());
+    const aliveImpostors = aliveAgents.filter(agent => agent.isImpostor());
+
     // Check if crewmates win by completing all tasks
-    if (window.GAME_CONFIG && window.GAME_CONFIG.TASK_WIN) {
-      const totalTasks = this.agents.reduce((sum, agent) => sum + agent.tasks.length, 0);
-      const completedTasks = this.agents.reduce((sum, agent) => 
-        sum + agent.tasks.filter(task => task.completed).length, 0);
-      
-      if (totalTasks > 0 && completedTasks === totalTasks) {
-        this.winner = 'crewmates';
-        this.phase = 'gameover';
-        this.logEvent('victory', 'Crewmates win by completing all tasks!');
-        return 'crewmates';
-      }
-    }
+    const totalTasks = this.getTotalTasks();
+    const completedTasks = this.getCompletedTasks();
     
+    if (totalTasks > 0 && completedTasks === totalTasks) {
+      this.winner = 'crewmates';
+      this.phase = 'gameover';
+      this.logEvent('victory', 'Crewmates win by completing all tasks!');
+      if (window.endGame) endGame('crewmates');
+      return 'crewmates';
+    }
+
     // Check if crewmates win by ejecting all impostors
-    if (window.GAME_CONFIG && window.GAME_CONFIG.VOTE_WIN && aliveImpostors.length === 0) {
+    if (aliveImpostors.length === 0) {
       this.winner = 'crewmates';
       this.phase = 'gameover';
       this.logEvent('victory', 'Crewmates win by ejecting all impostors!');
+      if (window.endGame) endGame('crewmates');
       return 'crewmates';
     }
-    
+
     // Check if impostors win (impostors >= crewmates)
     if (aliveImpostors.length >= aliveCrewmates.length) {
       this.winner = 'impostors';
       this.phase = 'gameover';
       this.logEvent('victory', 'Impostors win by equalizing crewmates!');
+      if (window.endGame) endGame('impostors');
       return 'impostors';
     }
-    
-    return null; // No winner yet
+
+    return null;
   }
 
   advanceTick() {
-    this.tick++;
-    this.logEvent('tick', `Simulation tick ${this.tick}`);
+    this.gameTick++;
+    this.logEvent('tick', `Simulation tick ${this.gameTick}`);
+    
+    // Update round counter in UI
+    const roundCounter = document.getElementById('round-counter');
+    if (roundCounter) {
+      roundCounter.textContent = this.gameTick.toString().padStart(2, '0');
+    }
     
     // Check win conditions after each tick
     if (this.phase === 'roaming') {
@@ -1281,7 +1683,7 @@ class WorldState {
     if (killer.killCooldown > 0) return false;
     
     victim.alive = false;
-    victim.deathTick = this.tick;
+    victim.deathTick = this.gameTick;
     victim.deathRoom = victim.currentRoom;
     
     // Add body to room using RoomState method
@@ -1315,7 +1717,7 @@ class WorldState {
     if (!agent.alive) return false;
     
     task.completed = true;
-    task.completedTick = this.tick;
+    task.completedTick = this.gameTick;
     
     this.logEvent('task', `${agent.name} completed task in ${agent.currentRoom}`, [agent]);
     
