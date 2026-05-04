@@ -816,7 +816,8 @@
         
         // Agent system
         const agents = [];
-        window.agentMeshes = new Map(); // agentId -> mesh
+        window.agentMeshes = window.agentMeshes || {}; // agentId -> mesh
+        window.bodyMarkers = window.bodyMarkers || {}; // agentId -> body marker mesh
         
         // New 7-room layout
         const ROOMS = {
@@ -1026,7 +1027,7 @@
         // Agent mesh creation function
         window.spawnAgentMesh = function(agent) {
             console.log('=== SPAWNING MESH FOR ===', agent.name, 'id:', agent.id, 'color:', agent.color)
-            console.log('Current agentMeshes size before spawn:', window.agentMeshes?.size || 0)
+            console.log('Current agentMeshes size before spawn:', Object.keys(window.agentMeshes || {}).length)
             
             // Create agent group
             const agentGroup = new THREE.Group();
@@ -1131,13 +1132,13 @@
             scene.add(agentGroup);
             console.log('Mesh added to scene for:', agent.name, 'position:', agentGroup.position)
             console.log('Total scene children:', scene.children.length)
-            agentMeshes.set(agent.id, agentGroup);
-            console.log('Mesh stored in agentMeshes Map, new size:', agentMeshes.size)
-            console.log('agentMeshes keys after spawn:', Array.from(agentMeshes.keys()))
+            window.agentMeshes[agent.id] = agentGroup;
+            console.log('Mesh stored in agentMeshes object, new size:', Object.keys(window.agentMeshes || {}).length)
+            console.log('agentMeshes keys after spawn:', Object.keys(window.agentMeshes || {}))
             
             // Verify mesh was stored correctly
-            const storedMesh = agentMeshes.get(agent.id)
-            console.log('Verification - mesh retrieved from Map:', !!storedMesh)
+            const storedMesh = window.agentMeshes[agent.id]
+            console.log('Verification - mesh retrieved from object:', !!storedMesh)
             
             // Store mesh reference on agent object
             agent.mesh = agentGroup;
@@ -1157,6 +1158,50 @@
             );
             
             console.log(`Updated ${agent.name} position to ${agent.currentRoom}:`, agent.mesh.position);
+        };
+
+        // Body marker system
+        window.spawnBodyMarker = function(agent, roomId) {
+            const pos = getRoomPosition(roomId);
+            
+            // Flat X shape lying on ground
+            const material = new THREE.MeshBasicMaterial({ 
+                color: agent.color, 
+                transparent: true, 
+                opacity: 0.8 
+            });
+            
+            // Two flat boxes crossed = X shape
+            const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), material);
+            const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), material);
+            bar1.rotation.y = Math.PI / 4;
+            bar2.rotation.y = -Math.PI / 4;
+            
+            const bodyGroup = new THREE.Group();
+            bodyGroup.add(bar1, bar2);
+            bodyGroup.position.set(pos.x + 0.4, 0.1, pos.z + 0.4); // offset inside room
+            scene.add(bodyGroup);
+            
+            // Store body marker
+            window.bodyMarkers[agent.id] = bodyGroup;
+            
+            // Slow pulse animation on the body marker
+            bodyGroup.userData = { 
+                isBodyMarker: true,
+                pulseSpeed: 0.001,
+                originalOpacity: 0.8
+            };
+            
+            console.log(`Body marker spawned for ${agent.name} in room ${roomId}`);
+        };
+
+        window.removeBodyMarker = function(agentId) {
+            const bodyMarker = window.bodyMarkers[agentId];
+            if (bodyMarker && scene) {
+                scene.remove(bodyMarker);
+                window.bodyMarkers[agentId] = undefined;
+                console.log(`Body marker removed for agent ${agentId}`);
+            }
         };
         
         // Add floating particles for dynamic effect
@@ -1265,18 +1310,34 @@
             });
             
             // Animate agent glow rings with suspicion-based pulse speed
-            window.agentMeshes?.forEach((agentGroup, agentId) => {
+            Object.values(window.agentMeshes || {}).forEach((agentGroup) => {
+                if (!agentGroup || !agentGroup.children) return;
                 const glowRing = agentGroup.children.find(child => child.userData.isGlowRing);
                 if (glowRing) {
                     const pulseSpeed = glowRing.userData.pulseSpeed || 0.002;
-                    glowRing.material.opacity = 0.3 + Math.sin(time * (1/pulseSpeed)) * 0.3;
+                    const scale = 1 + Math.sin(Date.now() * pulseSpeed) * 0.1;
+                    glowRing.scale.set(scale, scale, 1);
                 }
             });
             
+            // Animate body markers with slow pulse
+            Object.values(window.bodyMarkers || {}).forEach((bodyGroup) => {
+                if (!bodyGroup || !bodyGroup.userData || !bodyGroup.children) return;
+                if (bodyGroup.userData.isBodyMarker) {
+                    const pulseSpeed = bodyGroup.userData.pulseSpeed || 0.001;
+                    const opacity = bodyGroup.userData.originalOpacity + Math.sin(Date.now() * pulseSpeed) * 0.2;
+                    bodyGroup.children.forEach(child => {
+                        if (child.material) {
+                            child.material.opacity = Math.max(0.4, Math.min(1.0, opacity));
+                        }
+                    });
+                }
+            });
+
             // Smooth agent movement every frame
             if (window.WORLD && window.WORLD.agents) {
                 for (const agent of WORLD.agents) {
-                    const mesh = window.agentMeshes?.get(agent.id)
+                    const mesh = window.agentMeshes?.[agent.id]
                     if (!mesh || !agent.targetPosition) continue
 
                     if (agent.isMoving) {
@@ -1290,8 +1351,8 @@
                             mesh.rotation.y = 0
                         }
                     } else {
-                        // Idle bob animation
-                        mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + agent.id) * 0.06
+                        // Idle bob animation - consistent for all agents
+                        mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002) * 0.06
                     }
                 }
             }
@@ -1677,7 +1738,7 @@
             
             <div class="gameover-divider"></div>
             
-            <button id="play-again-btn" class="play-again-btn" onclick="resetGame()">
+            <button id="play-again-btn" class="play-again-btn" onclick="playAgain()">
                 ▶ PLAY AGAIN
             </button>
         </div>
@@ -1856,7 +1917,46 @@
     </style>
 
     <script>
+        // Global tick timer variable
         let tickTimer = null;
+
+        // Control buttons
+        document.getElementById('start-btn').addEventListener('click', () => {
+            console.log('START BUTTON CLICKED');
+            isPaused = false;
+            addLog('Simulation started', 'system');
+            console.log('WORLD exists:', !!window.WORLD);
+            if (window.WORLD) {
+                console.log('WORLD.agents.length:', window.WORLD.agents.length);
+                console.log('WORLD.phase:', window.WORLD.phase);
+                // Spawn agents if they haven't been spawned yet
+                if (window.WORLD.agents.length === 0) {
+                    console.log('START: Spawning agents automatically...');
+                    try {
+                        window.WORLD.spawnAgents();
+                        console.log('spawnAgents completed, agent count:', window.WORLD.agents.length);
+                    } catch (error) {
+                        console.error('Error in spawnAgents:', error);
+                    }
+                }
+                console.log('Setting phase to roaming...');
+                window.WORLD.setPhase('roaming');
+                console.log('Phase set to roaming, current phase:', window.WORLD.phase);
+                
+                // Start tick timer if not already running
+                if (!tickTimer) {
+                    console.log('Starting tick timer...');
+                    tickTimer = setInterval(() => {
+                        if (window.WORLD && window.WORLD.phase === 'roaming') {
+                            window.WORLD.tick();
+                        }
+                    }, 1000); // Advance tick every second
+                }
+            } else {
+                console.error('WORLD not available when start button clicked');
+                addLog('Error: World not ready', 'system');
+            }
+        });
 
         function endGame(winner) {
             try {
@@ -1870,7 +1970,7 @@
                 const totalTasks = WORLD.getTotalTasks()
                 const completedTasks = WORLD.getCompletedTasks()
                 const totalKills = WORLD.agents.filter(a => !a.alive && a.role === 'crewmate').length
-                const rounds = WORLD.gameTick
+                const rounds = Math.floor(WORLD.gameTick / 10) + 1 // Convert ticks to rounds (10 ticks = 1 round)
                 
                 console.log('[ENDGAME] Stats:', { totalTasks, completedTasks, totalKills, rounds })
                 
@@ -1953,54 +2053,147 @@
             }
         }
 
-        function resetGame() {
-            // Hide overlay
-            document.getElementById('gameover-overlay').style.display = 'none'
-            
-            // Clear existing tick timer
-            if (tickTimer) clearInterval(tickTimer)
-            
-            // Reset world state
-            WORLD.phase = 'idle'
-            WORLD.gameTick = 0
-            WORLD.winner = null
-            WORLD.events = []
-            WORLD.pendingMeeting = false
-            WORLD.bodyFound = null
-            
-            // Clear agents and rooms
-            WORLD.agents = []
-            Object.keys(WORLD.rooms).forEach(roomId => {
-                WORLD.rooms[roomId].agents.clear()
-                WORLD.rooms[roomId].hasBody = false
-                WORLD.rooms[roomId].bodyOf = null
-            })
-            
-            // Clear 3D meshes
-            if (window.agentMeshes) {
-                window.agentMeshes.forEach(mesh => {
-                    window.scene?.remove(mesh)
-                })
-                window.agentMeshes.clear()
-            }
-            
-            // Respawn agents
-            WORLD.spawnAgents()
-            
-            // Update UI
-            WORLD.updateAgentPanel()
-            WORLD.updatePhaseHUD('idle')
-            
-            // Start tick timer
-            tickTimer = setInterval(() => {
-                if (window.WORLD && window.WORLD.phase === 'roaming') {
-                    window.WORLD.tick();
-                }
-            }, 1000) // Advance tick every second
-            
-            // Restart game loop
-            WORLD.setPhase('roaming')
-        }
+        function playAgain() {
+  // 1. Stop the tick loop FIRST
+  clearInterval(tickTimer)
+  tickTimer = null
+
+  // 2. Remove ALL agent meshes from Three.js scene
+  for (const id of Object.keys(window.agentMeshes || {})) {
+    const mesh = window.agentMeshes[id]
+    if (mesh) {
+      scene.remove(mesh)
+      // Dispose geometry and materials to free memory
+      mesh.traverse(child => {
+        if (child.geometry) child.geometry.dispose()
+        if (child.material) child.material.dispose()
+      })
+    }
+  }
+  window.agentMeshes = {}  // clear the reference object
+
+  // 3. Remove body markers from scene
+  for (const id of Object.keys(window.bodyMarkers || {})) {
+    scene.remove(window.bodyMarkers[id])
+  }
+  window.bodyMarkers = {}
+
+  // 4. Reset world state
+  WORLD.agents = []
+  WORLD.gameTick = 0
+  WORLD.phase = 'idle'
+  WORLD.winner = null
+  WORLD.events = []
+  WORLD.pendingMeeting = false
+  WORLD.bodyFound = null
+
+  // 5. Reset all room states
+  for (const room of Object.values(WORLD.rooms)) {
+    room.agents = new Set()
+    room.hasBody = false
+    room.bodyOf = null
+  }
+
+  // 6. Reinitialize tasks
+  WORLD.initializeTasks()
+
+  // 7. Clear UI
+  document.getElementById('event-log-container').innerHTML = ''
+  WORLD.updateAgentPanel()
+  WORLD.updateTaskHUD()
+
+  // 8. Hide all overlays
+  hideMeetingOverlay()
+  document.getElementById('gameover-overlay').style.display = 'none'
+
+  // 9. Spawn new agents
+  WORLD.spawnAgents()
+
+  // 10. Update UI with new agents
+  WORLD.updateAgentPanel()
+
+  // 11. Start tick timer
+  tickTimer = setInterval(() => {
+    if (window.WORLD && window.WORLD.phase === 'roaming') {
+      window.WORLD.tick();
+    }
+  }, 1000)
+
+  // 12. Start the game
+  WORLD.setPhase('roaming')
+
+  // 13. Reset buttons
+  document.getElementById('start-btn').disabled = true
+  document.getElementById('pause-btn').disabled = false
+
+  WORLD.logEvent('system', 'New game started! Agents are ready.')
+  console.log('=== PLAY AGAIN COMPLETE ===')
+  console.log('Scene children after reset:', scene.children.length)
+  console.log('agentMeshes after reset:', Object.keys(window.agentMeshes).length)
+}
+
+function resetGame() {
+  // 1. Stop the tick loop FIRST
+  clearInterval(tickTimer)
+  tickTimer = null
+
+  // 2. Remove ALL agent meshes from Three.js scene
+  for (const id of Object.keys(window.agentMeshes || {})) {
+    const mesh = window.agentMeshes[id]
+    if (mesh) {
+      scene.remove(mesh)
+      // Dispose geometry and materials to free memory
+      mesh.traverse(child => {
+        if (child.geometry) child.geometry.dispose()
+        if (child.material) child.material.dispose()
+      })
+    }
+  }
+  window.agentMeshes = {}  // clear the reference object
+
+  // 3. Remove body markers from scene
+  for (const id of Object.keys(window.bodyMarkers || {})) {
+    scene.remove(window.bodyMarkers[id])
+  }
+  window.bodyMarkers = {}
+
+  // 4. Reset world state
+  WORLD.agents = []
+  WORLD.gameTick = 0
+  WORLD.phase = 'idle'
+  WORLD.winner = null
+  WORLD.events = []
+  WORLD.pendingMeeting = false
+  WORLD.bodyFound = null
+
+  // 5. Reset all room states
+  for (const room of Object.values(WORLD.rooms)) {
+    room.agents = new Set()
+    room.hasBody = false
+    room.bodyOf = null
+  }
+
+  // 6. Reinitialize tasks
+  WORLD.initializeTasks()
+
+  // 7. Clear UI
+  document.getElementById('event-log-container').innerHTML = ''
+  WORLD.updateAgentPanel()
+  WORLD.updateTaskHUD()
+
+  // 8. Hide all overlays
+  hideMeetingOverlay()
+  document.getElementById('gameover-overlay').style.display = 'none'
+
+  // 9. Reset buttons
+  document.getElementById('start-btn').disabled = false
+  document.getElementById('pause-btn').disabled = true
+
+  WORLD.logEvent('system', 'Simulation reset. Click START to begin.')
+  console.log('=== GAME RESET COMPLETE ===')
+  console.log('Scene children after reset:', scene.children.length)
+  console.log('agentMeshes after reset:', Object.keys(window.agentMeshes).length)
+}
 
         window.endGame = endGame
         window.resetGame = resetGame

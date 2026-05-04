@@ -204,6 +204,17 @@ function ejectAgent(agentName) {
     // Update game state
     agent.alive = false
     WORLD.getRoom(agent.currentRoom).agents.delete(agent.id)
+    
+    // Spawn body marker
+    if (window.spawnBodyMarker) {
+      window.spawnBodyMarker(agent, agent.currentRoom);
+    }
+    
+    // Remove agent from world agents array to prevent duplicates on reset
+    const agentIndex = WORLD.agents.findIndex(a => a.id === agent.id)
+    if (agentIndex > -1) {
+      WORLD.agents.splice(agentIndex, 1)
+    }
 
     // Show result in UI
     const resultContainer = document.getElementById('meeting-result');
@@ -219,7 +230,7 @@ function ejectAgent(agentName) {
     resultContainer.style.display = 'block';
 
     // Get Three.js mesh for animation
-    const mesh = window.agentMeshes?.get(agent.id)
+    const mesh = window.agentMeshes?.[agent.id]
     if (!mesh) {
       // Fallback if no mesh found
       WORLD.logEvent('eject', `${agentName} ejected — ${wasImpostor ? 'WAS impostor ✓' : 'was NOT impostor ✗'}`)
@@ -250,12 +261,12 @@ function ejectAgent(agentName) {
       } else {
         // Remove from scene
         window.scene?.remove(mesh)
-        window.agentMeshes?.delete(agent.id)
+        window.agentMeshes[agent.id] = undefined
         
         // Log event and dispatch
         WORLD.logEvent(
           wasImpostor ? 'vote' : 'kill',
-          `${agentName} ejected — ${wasImpostor ? 'WAS impostor ✓' : 'was NOT impostor ✗'}` 
+          `${agentName} ejected — ${wasImpostor ? 'WAS impostor ' : 'was NOT impostor '}` 
         )
         document.dispatchEvent(new CustomEvent('agentDied', {
           detail: { agent, killer: null, room: 'meeting' }
@@ -893,14 +904,14 @@ class WorldState {
         console.log(`DEBUG: Setting target position for ${agent.name} (id: ${agent.id}) to ${nextRoom}`)
         console.log(`DEBUG: getRoomPosition exists:`, !!window.getRoomPosition)
         console.log(`DEBUG: agentMeshes exists:`, !!window.agentMeshes)
-        console.log(`DEBUG: agentMeshes keys:`, Array.from(window.agentMeshes?.keys() || []))
-        console.log(`DEBUG: agentMeshes size:`, window.agentMeshes?.size)
+        console.log(`DEBUG: agentMeshes keys:`, Object.keys(window.agentMeshes || {}))
+        console.log(`DEBUG: agentMeshes size:`, Object.keys(window.agentMeshes || {}).length)
         console.log(`DEBUG: looking for agent.id:`, agent.id)
         console.log(`DEBUG: agent mesh exists:`, !!window.agentMeshes?.[agent.id])
-        console.log(`DEBUG: agent mesh via get:`, !!window.agentMeshes?.get(agent.id))
+        console.log(`DEBUG: agent mesh via get:`, !!window.agentMeshes?.[agent.id])
         console.log(`DEBUG: THREE exists:`, !!window.THREE)
         
-        if (window.getRoomPosition && window.agentMeshes && window.agentMeshes.get(agent.id)) {
+        if (window.getRoomPosition && window.agentMeshes && window.agentMeshes[agent.id]) {
           const roomPos = window.getRoomPosition(nextRoom)
           console.log(`DEBUG: Room position:`, roomPos)
           if (roomPos) {
@@ -991,8 +1002,46 @@ class WorldState {
     // Update suspicion scores
     this.updateSuspicions();
     
+    // Process tasks
+    this.processTasks();
+    
     // Process kills
     this.processKills();
+  }
+
+  processTasks() {
+    // Process tasks for all alive agents
+    const aliveAgents = this.agents.filter(a => a.alive);
+    
+    for (const agent of aliveAgents) {
+      // Check if agent is in a room with tasks
+      const currentRoom = this.getRoom(agent.currentRoom);
+      if (!currentRoom || !currentRoom.tasks.length) continue;
+      
+      // Find if agent has an assigned task in this room
+      const agentTaskInRoom = agent.assignedTasks
+        .map(taskId => currentRoom.tasks.find(t => t.id === taskId))
+        .find(task => task && !task.isComplete);
+      
+      if (agentTaskInRoom) {
+        // Work on the task
+        const taskCompleted = agentTaskInRoom.workOn(agent.id);
+        
+        if (taskCompleted) {
+          // Task completed!
+          agent.completeTask(agentTaskInRoom);
+          this.logEvent('task', `${agent.name} completed ${agentTaskInRoom.name} in ${currentRoom.name}`);
+          
+          // Dispatch task completion event
+          document.dispatchEvent(new CustomEvent('taskDone', {
+            detail: { agent, task: agentTaskInRoom }
+          }));
+          
+          // Update task HUD
+          this.updateTaskHUD();
+        }
+      }
+    }
   }
 
   updateSuspicionVisuals() {
@@ -1077,7 +1126,7 @@ class WorldState {
   }
 
   updateAgentSuspicionVisuals(agent) {
-    const mesh = window.agentMeshes?.get(agent.id);
+    const mesh = window.agentMeshes?.[agent.id];
     if (!mesh) return;
     
     // Update glow ring color
@@ -1138,6 +1187,17 @@ class WorldState {
       imp.killCooldown = window.GAME_CONFIG ? window.GAME_CONFIG.KILL_COOLDOWN_TICKS : 4
       this.getRoom(imp.currentRoom).hasBody = true
       this.getRoom(imp.currentRoom).bodyOf = victim.name
+      
+      // Spawn body marker
+      if (window.spawnBodyMarker) {
+        window.spawnBodyMarker(victim, victim.currentRoom);
+      }
+      
+      // Remove killed agent from world agents array to prevent duplicates on reset
+      const victimIndex = this.agents.findIndex(a => a.id === victim.id)
+      if (victimIndex > -1) {
+        this.agents.splice(victimIndex, 1)
+      }
 
       this.logEvent('kill', `${imp.name} killed ${victim.name} in ${this.getRoom(imp.currentRoom).name}`)
 
@@ -1406,66 +1466,95 @@ class WorldState {
   }
 
   updateAgentPanel() {
-    const agentCardsContainer = document.getElementById('agent-cards');
-    if (!agentCardsContainer || !this.agents.length) return;
+  const panel = document.getElementById('agentsList')
+  if (!panel) return
+  panel.innerHTML = ''
 
-    let agentHTML = '';
-    this.agents.forEach(agent => {
-      const isDead = !agent.alive;
-      const agentColor = agent.color || '#00e5ff';
-      const currentRoom = agent.currentRoom?.toUpperCase() || 'UNKNOWN';
-      
-      // Calculate health (100% for alive, 0% for dead)
-      const healthPercent = isDead ? 0 : 100;
-      
-      // Calculate task progress
-      const totalTasks = agent.tasks?.length || 0;
-      const completedTasks = agent.tasks?.filter(task => task.isComplete).length || 0;
-      const taskPercent = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
-      
-      // Determine role badge
-      let roleBadge = '';
-      if (isDead && agent.isImpostor) {
-        roleBadge = '<span class="role-badge imp">IMP</span>';
-      } else if (isDead) {
-        roleBadge = '<span class="role-badge crew">CREW</span>';
-      } else {
-        roleBadge = '<span class="role-badge hidden">???</span>';
-      }
-      
-      // Health bar color based on percentage
-      let healthColor = '#00ff00'; // green
-      if (healthPercent <= 30) healthColor = '#ff0000'; // red
-      else if (healthPercent <= 60) healthColor = '#ffff00'; // yellow
-      
-      agentHTML += `
-        <div class="agent-card ${isDead ? 'dead' : ''}" data-agent-id="${agent.id}">
-          <div class="agent-card-header">
-            <div class="agent-info">
-              <span class="agent-dot" style="background-color: ${isDead ? '#ff4444' : agentColor}">${isDead ? '✕' : ''}</span>
-              <span class="agent-name">${agent.name.toUpperCase()}</span>
-              ${roleBadge}
+  // Show ALL agents — alive first, dead after
+  const alive = WORLD.agents.filter(a => a.alive)
+  const dead = WORLD.agents.filter(a => !a.alive)
+  const ordered = [...alive, ...dead]
+
+  for (const agent of ordered) {
+    const card = document.createElement('div')
+    card.className = `agent-card ${agent.alive ? '' : 'dead'}` 
+
+    // Only reveal impostor role after death
+    const showRole = !agent.alive || WORLD.phase === 'gameover'
+    const roleLabel = showRole ? agent.role.toUpperCase() : 'CREW'
+    const roleClass = showRole && agent.role === 'impostor' 
+      ? 'impostor' : 'crewmate'
+
+    const tasksDone = agent.assignedTasks
+      ?.filter(t => t.isComplete).length || 0
+    const tasksTotal = agent.assignedTasks?.length || 0
+    const taskPct = tasksTotal > 0 
+      ? (tasksDone / tasksTotal) * 100 : 0
+
+    const avgSuspicion = WORLD.agents
+      .filter(a => a.alive && a.name !== agent.name)
+      .reduce((sum, a) => sum + (a.suspicions[agent.name] || 0), 0) 
+      / Math.max(1, WORLD.agents.filter(a => a.alive).length - 1)
+
+    const suspPct = Math.min((avgSuspicion / 10) * 100, 100)
+    const suspColor = avgSuspicion > 6 ? '#ef5350' 
+                    : avgSuspicion > 3 ? '#ffca28' 
+                    : '#66bb6a'
+
+    card.innerHTML = `
+      <div class="agent-header">
+        <span class="agent-dot" 
+          style="background:${agent.color};
+          opacity:${agent.alive ? 1 : 0.4}">
+          ${agent.alive ? '' : '✕'}
+        </span>
+        <span class="agent-name" 
+          style="opacity:${agent.alive ? 1 : 0.5}">
+          ${agent.name}
+        </span>
+        <span class="role-badge ${roleClass}">
+          ${roleLabel}
+        </span>
+        ${!agent.alive ? '<span class="dead-tag">DEAD</span>' : ''}
+      </div>
+
+      ${agent.alive ? `
+        <div class="agent-bars">
+          <div class="bar-row">
+            <span class="bar-label">TASKS</span>
+            <div class="bar-bg">
+              <div class="bar-fill task-fill" 
+                style="width:${taskPct}%"></div>
             </div>
+            <span class="bar-val">${tasksDone}/${tasksTotal}</span>
           </div>
-          <div class="agent-status">
-            <div class="progress-bar">
-              <div class="progress-fill health-fill" style="width: ${healthPercent}%; background: linear-gradient(to right, #ff0000 0%, #ffff00 50%, #00ff00 100%); background-size: 300% 100%; background-position: ${100 - healthPercent}% 0%;"></div>
+          <div class="bar-row">
+            <span class="bar-label">SUSP</span>
+            <div class="bar-bg">
+              <div class="bar-fill susp-fill" 
+                style="width:${suspPct}%;background:${suspColor}">
+              </div>
             </div>
-            <span class="room-name">${currentRoom}</span>
-          </div>
-          <div class="agent-stats">
-            <span class="health-text">Health: ${healthPercent}%</span>
-            <span class="task-text">Tasks: ${completedTasks}/${totalTasks}</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill task-fill" style="width: ${taskPercent}%"></div>
+            <span class="bar-val" style="color:${suspColor}">
+              ${avgSuspicion.toFixed(1)}
+            </span>
           </div>
         </div>
-      `;
-    });
-
-    agentCardsContainer.innerHTML = agentHTML;
+        <div class="agent-location">
+          📍 ${WORLD.rooms[agent.currentRoom]?.name || agent.currentRoom}
+        </div>
+      ` : ` 
+        <div class="agent-location" style="opacity:0.4">
+          ☠ eliminated — was in ${WORLD.rooms[agent.currentRoom]?.name || agent.currentRoom}
+          ${showRole && agent.role === 'impostor' 
+            ? ' — <span style="color:#ef5350">WAS IMPOSTOR</span>' 
+            : ''}
+        </div>
+      `}
+    `
+    panel.appendChild(card)
   }
+}
 
   updateTaskHUD() {
     const totalTasks = this.getTotalTasks();
