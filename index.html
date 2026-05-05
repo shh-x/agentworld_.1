@@ -6,26 +6,17 @@
     <title>AI Agent Simulation - Space Station</title>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             overflow: hidden;
             background-color: #050a14;
             font-family: 'Share Tech Mono', monospace;
             color: #8ab4c4;
         }
-        
-        #canvas-container {
-            position: fixed;
-            inset: 0;
-            z-index: 1;
-        }
-        
-        /* HUD Panels */
+
+        #canvas-container { position: fixed; inset: 0; z-index: 1; }
+
         .hud-panel {
             position: fixed;
             background: rgba(5, 10, 20, 0.85);
@@ -34,517 +25,255 @@
             z-index: 10;
             overflow: hidden;
         }
-        
+
         #top-bar {
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 16px;
-            border-bottom: 1px solid #0d2a3a;
+            top: 0; left: 0; right: 0; height: 48px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 16px; border-bottom: 1px solid #0d2a3a;
         }
-        
+
         #bottom-bar {
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 16px;
-            border-top: 1px solid #0d2a3a;
-            gap: 12px;
+            bottom: 0; left: 0; right: 0; height: 36px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 16px; border-top: 1px solid #0d2a3a; gap: 12px;
         }
-        
+
         #left-panel {
-            top: 48px;
-            left: 0;
-            width: 220px;
-            bottom: 32px;
-            border-right: 1px solid #0d2a3a;
+            top: 48px; left: 0; width: 220px; bottom: 36px;
+            border-right: 1px solid #0d2a3a; overflow-y: auto;
         }
-        
+
         #right-panel {
-            top: 48px;
-            right: 0;
-            width: 240px;
-            bottom: 32px;
+            top: 48px; right: 0; width: 240px; bottom: 36px;
             border-left: 1px solid #0d2a3a;
         }
-        
-        /* HUD Content Styles */
-        .hud-title {
-            color: #00e5ff;
-            font-size: 14px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
-        }
-        
-        .hud-text {
-            color: #8ab4c4;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        
-        .hud-accent {
-            color: #00e5ff;
-        }
-        
-        .hud-danger {
-            color: #ff4444;
-        }
-        
-        .hud-section {
-            padding: 12px;
-            border-bottom: 1px solid rgba(13, 42, 58, 0.5);
-        }
-        
-        .hud-section:last-child {
-            border-bottom: none;
-        }
-        
-        .hud-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 4px;
-        }
-        
-        .hud-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        /* Top Bar Layout */
-        .top-bar-left {
-            flex: 1;
-        }
-        
-        .top-bar-center {
-            flex: 1;
-            text-align: center;
-        }
-        
-        .top-bar-right {
-            flex: 1;
-            text-align: right;
-        }
-        
-        /* Panel Headers */
-        .panel-header {
-            background: rgba(0, 229, 255, 0.1);
-            padding: 8px 12px;
-            border-bottom: 1px solid #0d2a3a;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 1px;
-        }
-        
-        .panel-header.event-log-header {
-            color: #00e5ff;
-            font-size: 10px;
-            letter-spacing: 2px;
-        }
-        
-        .panel-content {
-            padding: 12px;
-        }
-        
-        /* Agent Cards */
-        .agent-card {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid #0d2a3a;
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 8px;
-            transition: opacity 0.3s ease;
-        }
-        
-        .agent-card.dead {
-            opacity: 0.3;
-        }
-        
-        .agent-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 4px;
-        }
-        
-        .agent-info {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .agent-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        
-        .agent-name {
-            font-weight: bold;
-            color: #8ab4c4;
-            font-size: 11px;
-        }
-        
-        .role-badge {
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 9px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .role-badge.crew {
-            background: rgba(0, 255, 0, 0.2);
-            color: #00ff00;
-            border: 1px solid rgba(0, 255, 0, 0.4);
-        }
-        
-        .role-badge.imp {
-            background: rgba(255, 0, 0, 0.2);
-            color: #ff0000;
-            border: 1px solid rgba(255, 0, 0, 0.4);
-        }
-        
-        .role-badge.hidden {
-            background: rgba(136, 180, 196, 0.2);
-            color: #8ab4c4;
-            border: 1px solid rgba(136, 180, 196, 0.4);
-        }
-        
-        .agent-status {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 4px;
-            font-size: 10px;
-        }
-        
-        .room-name {
-            color: #00e5ff;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background: rgba(13, 42, 58, 0.5);
-            border-radius: 2px;
-            overflow: hidden;
-            margin-bottom: 2px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            border-radius: 2px;
-            transition: width 0.3s ease;
-        }
-        
-        .health-fill {
-            background: linear-gradient(to right, #ff0000, #ffff00, #00ff00);
-        }
-        
-        .task-fill {
-            background: #00e5ff;
-        }
-        
-        .agent-stats {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 9px;
-            color: #8ab4c4;
-        }
-        
-        .health-text {
-            color: #8ab4c4;
-        }
-        
-        .task-text {
-            color: #00e5ff;
-        }
-        
-        /* Top Bar Elements */
+
         .station-title {
-            font-family: 'Orbitron', monospace;
-            font-weight: 900;
-            font-size: 16px;
+            font-family: 'Orbitron', monospace; font-weight: 900; font-size: 16px;
             color: #00e5ff;
-            text-shadow: 0 0 10px rgba(0, 229, 255, 0.8),
-                         0 0 20px rgba(0, 229, 255, 0.4);
+            text-shadow: 0 0 10px rgba(0,229,255,0.8), 0 0 20px rgba(0,229,255,0.4);
             letter-spacing: 2px;
         }
-        
+
         .phase-pill {
-            background: #00e5ff;
-            color: #050a14;
-            padding: 4px 12px;
-            border-radius: 16px;
-            font-family: 'Share Tech Mono', monospace;
-            font-weight: bold;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            padding: 4px 12px; border-radius: 16px;
+            font-family: 'Share Tech Mono', monospace; font-weight: bold;
+            font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
             transition: all 0.3s ease;
         }
-        
-        .phase-pill.roaming {
-            background: #00e5ff;
-            color: #050a14;
-        }
-        
-        .phase-pill.meeting {
-            background: #cc88ff;
-            color: #050a14;
-        }
-        
-        .phase-pill.voting {
-            background: #ffcc00;
-            color: #050a14;
-        }
-        
-        .phase-pill.gameover {
-            background: #ff4444;
-            color: #050a14;
-        }
-        
-        .stat-chips {
-            display: flex;
-            gap: 8px;
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 10px;
-            color: #8ab4c4;
-        }
-        
+        .phase-pill.roaming    { background: #00e5ff; color: #050a14; }
+        .phase-pill.meeting    { background: #cc88ff; color: #050a14; }
+        .phase-pill.discussion { background: #cc88ff; color: #050a14; }
+        .phase-pill.voting     { background: #ffcc00; color: #050a14; }
+        .phase-pill.gameover   { background: #ff4444; color: #050a14; }
+
+        .stat-chips { display: flex; gap: 8px; font-size: 10px; }
         .stat-chip {
-            background: rgba(0, 229, 255, 0.1);
-            border: 1px solid #00e5ff;
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: #00e5ff;
+            background: rgba(0,229,255,0.1); border: 1px solid #00e5ff;
+            padding: 2px 6px; border-radius: 4px; color: #00e5ff;
         }
-        
-        /* Bottom Bar Elements */
-        .control-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        
+
+        .control-buttons { display: flex; gap: 8px; }
         .control-btn {
-            background: rgba(5, 10, 20, 0.8);
-            border: 1px solid #00e5ff;
-            color: #00e5ff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 10px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            background: rgba(5,10,20,0.8); border: 1px solid #00e5ff;
+            color: #00e5ff; padding: 4px 10px; border-radius: 4px;
+            font-family: 'Share Tech Mono', monospace; font-size: 10px;
+            font-weight: bold; cursor: pointer; transition: all 0.2s ease;
         }
-        
         .control-btn:hover {
-            background: rgba(0, 229, 255, 0.2);
-            box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
-            text-shadow: 0 0 4px rgba(0, 229, 255, 0.8);
+            background: rgba(0,229,255,0.2);
+            box-shadow: 0 0 8px rgba(0,229,255,0.6);
         }
-        
-        .control-btn:active {
-            transform: scale(0.95);
-        }
-        
-        .speed-control {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 10px;
-            color: #8ab4c4;
-        }
-        
-        .speed-dots {
-            display: flex;
-            gap: 4px;
-        }
-        
+        .control-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .speed-control { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #8ab4c4; }
+        .speed-dots { display: flex; gap: 4px; }
         .speed-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: rgba(136, 180, 196, 0.3);
-            border: 1px solid rgba(136, 180, 196, 0.5);
-            cursor: pointer;
-            transition: all 0.2s ease;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: rgba(136,180,196,0.3); border: 1px solid rgba(136,180,196,0.5);
+            cursor: pointer; transition: all 0.2s ease;
         }
-        
-        .speed-dot.active {
-            background: #00e5ff;
-            border-color: #00e5ff;
-            box-shadow: 0 0 4px rgba(0, 229, 255, 0.6);
-        }
-        
-        .speed-dot:hover {
-            background: rgba(0, 229, 255, 0.6);
-            border-color: #00e5ff;
-        }
-        
+        .speed-dot.active { background: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 4px rgba(0,229,255,0.6); }
+
         .camera-toggle {
-            background: rgba(5, 10, 20, 0.8);
-            border: 1px solid #00e5ff;
-            color: #00e5ff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 10px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            background: rgba(5,10,20,0.8); border: 1px solid #00e5ff; color: #00e5ff;
+            padding: 4px 8px; border-radius: 4px; font-size: 10px;
+            font-family: 'Share Tech Mono', monospace; font-weight: bold; cursor: pointer;
         }
-        
-        .camera-toggle:hover {
-            background: rgba(0, 229, 255, 0.2);
-            box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
-            text-shadow: 0 0 4px rgba(0, 229, 255, 0.8);
+
+        .panel-header {
+            background: rgba(0,229,255,0.1); padding: 8px 12px;
+            border-bottom: 1px solid #0d2a3a; font-weight: bold;
+            text-transform: uppercase; font-size: 11px; letter-spacing: 1px; color: #00e5ff;
         }
-        
-        /* Event Log */
-        .event-log {
-            max-height: 200px;
-            overflow-y: auto;
+
+        .panel-content { padding: 8px; }
+
+        .agent-card {
+            background: rgba(0,0,0,0.4); border: 1px solid #0d2a3a;
+            border-radius: 4px; padding: 8px; margin-bottom: 6px;
         }
-        
+        .agent-card.dead { opacity: 0.35; }
+
+        .event-log { max-height: calc(100% - 40px); overflow-y: auto; }
         .event-item {
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(13, 42, 58, 0.3);
-            font-size: 11px;
+            padding: 3px 0; border-bottom: 1px solid rgba(13,42,58,0.3);
+            font-size: 11px; animation: slideIn 200ms ease-out;
+        }
+        .event-time { color: #00e5ff; margin-right: 6px; font-weight: bold; }
+
+        @keyframes slideIn {
+            from { transform: translateX(10px); opacity: 0; }
+            to   { transform: translateX(0); opacity: 1; }
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(5,10,20,0.5); }
+        ::-webkit-scrollbar-thumb { background: #0d2a3a; border-radius: 2px; }
+
+        /* ── MEETING OVERLAY ── */
+        .meeting-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000; font-family: 'Courier New', monospace;
+        }
+        .meeting-container {
+            background: rgba(20,20,30,0.97); border: 2px solid #ab47bc;
+            border-radius: 12px; padding: 28px; max-width: 580px; width: 92%;
+            max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 0 40px rgba(171,71,188,0.5);
+        }
+        .meeting-header { text-align: center; margin-bottom: 16px; }
+        .meeting-header h2 { color: #ab47bc; font-size: 26px; margin: 0; text-shadow: 0 0 10px rgba(171,71,188,0.6); }
+        .meeting-reason { color: #ff6b6b; font-size: 14px; margin-top: 8px; font-weight: bold; }
+        .meeting-divider { height: 1px; background: linear-gradient(to right, transparent, #ab47bc, transparent); margin: 16px 0; }
+        .meeting-statements { min-height: 100px; }
+        .statement {
+            color: #fff; margin: 8px 0; padding: 7px 10px;
+            background: rgba(171,71,188,0.1); border-left: 3px solid #ab47bc;
+            border-radius: 4px; opacity: 0; transform: translateX(-15px);
+            animation: stmtSlide 0.3s forwards;
+        }
+        .statement .speaker { color: #ab47bc; font-weight: bold; }
+        @keyframes stmtSlide { to { opacity: 1; transform: translateX(0); } }
+
+        .meeting-votes h3 { color: #ab47bc; text-align: center; margin: 0 0 12px; }
+        .vote-tally { display: flex; flex-direction: column; gap: 8px; }
+        .vote-item { display: flex; align-items: center; gap: 10px; }
+        .vote-name { color: #fff; width: 70px; font-weight: bold; font-size: 13px; }
+        .vote-bar-container { flex: 1; height: 18px; background: rgba(255,255,255,0.1); border-radius: 9px; overflow: hidden; }
+        .vote-bar { height: 100%; background: linear-gradient(to right, #ab47bc, #8e24aa); border-radius: 9px; transition: width 0.8s ease-out; }
+        .vote-count { color: #fff; font-size: 13px; min-width: 50px; }
+        .meeting-result { text-align: center; margin: 16px 0; padding: 14px; border-radius: 8px; }
+        .ejected-player { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        .ejected-verdict { font-size: 14px; }
+        .ejected-impostor { background: rgba(76,175,80,0.2); border: 1px solid #4caf50; color: #4caf50; }
+        .ejected-innocent { background: rgba(244,67,54,0.2); border: 1px solid #f44336; color: #f44336; }
+
+        .vote-role-reveal {
+            text-align: center; padding: 18px; margin-top: 16px;
+            border: 2px solid #fff; border-radius: 8px; background: rgba(0,0,0,0.8);
+            animation: revealAnim 0.5s ease-out;
+        }
+        @keyframes revealAnim { from { opacity:0; transform: translateY(15px); } to { opacity:1; transform: translateY(0); } }
+        .role-reveal-title  { font-size: 22px; font-weight: bold; color: #ff5252; margin-bottom: 8px; letter-spacing: 2px; }
+        .role-reveal-name   { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 12px; }
+        .role-reveal-role   { font-size: 24px; font-weight: bold; padding: 8px 18px; border-radius: 5px; margin-bottom: 12px; letter-spacing: 3px; }
+        .role-reveal-role.impostor { background: linear-gradient(135deg,#ff5252,#ff1744); color:#fff; box-shadow: 0 0 20px rgba(255,82,82,0.5); }
+        .role-reveal-role.crewmate { background: linear-gradient(135deg,#4caf50,#8bc34a); color:#fff; box-shadow: 0 0 20px rgba(76,175,80,0.5); }
+        .role-reveal-subtitle { font-size: 14px; color: #ccc; font-style: italic; }
+
+        /* ── GAMEOVER OVERLAY ── */
+        .gameover-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.96);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 2000; font-family: 'Courier New', monospace;
+        }
+        .gameover-container {
+            background: rgba(20,20,30,0.99); border: 2px solid #ab47bc;
+            border-radius: 16px; padding: 36px; max-width: 680px; width: 92%;
+            max-height: 90vh; overflow-y: auto; text-align: center;
+            transform: scale(0.8); opacity: 0;
+            animation: goReveal 0.5s ease-out forwards;
+            box-shadow: 0 0 60px rgba(171,71,188,0.6);
+        }
+        @keyframes goReveal { to { transform: scale(1); opacity: 1; } }
+        .gameover-title   { font-size: 44px; font-weight: bold; margin-bottom: 12px; text-shadow: 0 0 20px currentColor; }
+        .gameover-title.crewmate-win { color: #00bcd4; }
+        .gameover-title.impostor-win { color: #f44336; }
+        .gameover-reason  { font-size: 18px; color: #fff; margin-bottom: 24px; opacity: 0.9; }
+        .gameover-divider { height: 1px; background: linear-gradient(to right, transparent, #ab47bc, transparent); margin: 20px 0; }
+        .gameover-section h3 { color: #ab47bc; font-size: 16px; margin: 0 0 12px; letter-spacing: 2px; text-transform: uppercase; }
+
+        .role-reveal-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px; margin-bottom: 16px;
+        }
+        .role-item {
+            background: rgba(171,71,188,0.1); border: 1px solid rgba(171,71,188,0.3);
+            border-radius: 8px; padding: 10px; text-align: left;
+        }
+        .role-item-name { color: #fff; font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+        .role-item-badge {
+            font-size: 11px; font-weight: bold; padding: 2px 6px;
+            border-radius: 3px; display: inline-block;
+        }
+        .role-item-badge.impostor { background: rgba(255,82,82,0.3); color: #ff5252; border: 1px solid rgba(255,82,82,0.5); }
+        .role-item-badge.crewmate { background: rgba(76,175,80,0.3); color: #69f0ae; border: 1px solid rgba(76,175,80,0.4); }
+        .role-item-status { font-size: 10px; color: #888; margin-top: 3px; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 12px; }
+        .stat-item {
+            background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .stat-label { color: #fff; font-size: 13px; opacity: 0.8; }
+        .stat-value { color: #ab47bc; font-weight: bold; font-size: 15px; }
+
+        .play-again-btn {
+            background: linear-gradient(135deg, #ab47bc, #8e24aa); color: #fff;
+            border: none; border-radius: 12px; padding: 14px 36px;
+            font-size: 16px; font-weight: bold; cursor: pointer;
+            transition: all 0.3s ease; margin-top: 18px; text-transform: uppercase;
+            letter-spacing: 1px; box-shadow: 0 4px 15px rgba(171,71,188,0.4);
             font-family: 'Share Tech Mono', monospace;
-            animation: slideInFromRight 200ms ease-out;
         }
-        
-        .event-item:last-child {
-            border-bottom: none;
-        }
-        
-        .event-time {
-            color: #00e5ff;
-            margin-right: 8px;
-            font-weight: bold;
-        }
-        
-        /* Event Type Colors */
-        .event-move {
-            color: #4a6a7a;
-        }
-        
-        .event-task {
-            color: #00cc66;
-        }
-        
-        .event-kill {
-            color: #ff4444;
-        }
-        
-        .event-meeting {
-            color: #cc88ff;
-        }
-        
-        .event-vote {
-            color: #ffcc00;
-        }
-        
-        .event-system {
-            color: #2a4a5a;
-        }
-        
-        /* Event Log Animation */
-        @keyframes slideInFromRight {
-            from {
-                transform: translateX(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        /* Custom Scrollbar for Event Log */
-        .event-log::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .event-log::-webkit-scrollbar-track {
-            background: rgba(5, 10, 20, 0.5);
-        }
-        
-        .event-log::-webkit-scrollbar-thumb {
-            background: #00e5ff;
-            border-radius: 2px;
-        }
-        
-        .event-log::-webkit-scrollbar-thumb:hover {
-            background: #00ffff;
-        }
-        
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: rgba(5, 10, 20, 0.5);
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #0d2a3a;
-            border-radius: 3px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #1a3a4a;
+        .play-again-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(171,71,188,0.7);
         }
     </style>
 </head>
 <body>
-    <!-- Three.js Canvas - Full Screen -->
     <div id="canvas-container"></div>
-    
-    <!-- HUD Panels -->
+
+    <!-- TOP BAR -->
     <div id="top-bar" class="hud-panel">
-        <div class="top-bar-left">
+        <div style="flex:1">
             <div class="station-title">⬡ VOID STATION</div>
         </div>
-        <div class="top-bar-center">
-            <div class="phase-pill roaming" id="phase-display">ROAMING</div>
+        <div style="flex:1;text-align:center">
+            <div class="phase-pill roaming" id="phase-display">IDLE</div>
         </div>
-        <div class="top-bar-right">
+        <div style="flex:1;text-align:right">
             <div class="stat-chips">
-                <div class="stat-chip">ROUND: <span id="round-counter">01</span></div>
+                <div class="stat-chip">ROUND: <span id="round-counter">00</span></div>
                 <div class="stat-chip">ALIVE: <span id="alive-counter">6/6</span></div>
-                <div class="stat-chip">TASKS: <span id="task-counter">0/18</span></div>
+                <div class="stat-chip">TASKS: <span id="task-counter">0/0</span></div>
             </div>
         </div>
     </div>
-    
+
+    <!-- BOTTOM BAR -->
     <div id="bottom-bar" class="hud-panel">
         <div class="control-buttons">
-            <button class="control-btn" id="start-btn"> START</button>
-            <button class="control-btn" id="pause-btn"> PAUSE</button>
-            <button id="spawn-btn" class="control-btn">SPAWN AGENTS</button>
-            <button id="reset-btn" class="control-btn"> RESET</button>
+            <button class="control-btn" id="start-btn">▶ START</button>
+            <button class="control-btn" id="pause-btn">⏸ PAUSE</button>
+            <button class="control-btn" id="reset-btn">↺ RESET</button>
         </div>
         <div class="speed-control">
-            <span>SPEED:</span>
+            SPEED:
             <div class="speed-dots" id="speed-dots">
                 <div class="speed-dot" data-speed="1"></div>
                 <div class="speed-dot" data-speed="2"></div>
@@ -555,1648 +284,732 @@
         </div>
         <div class="camera-toggle" id="camera-toggle">CAM: ORBIT</div>
     </div>
-    
+
+    <!-- LEFT PANEL -->
     <div id="left-panel" class="hud-panel">
         <div class="panel-header">Agents</div>
-        <div class="panel-content" id="agent-cards">
-            <!-- Agent cards will be dynamically generated here -->
+        <div class="panel-content" id="agent-cards"></div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="right-panel" class="hud-panel">
+        <div class="panel-header">// EVENT LOG</div>
+        <div class="panel-content" style="height:calc(100% - 36px);overflow:hidden;">
+            <div class="event-log" id="event-log-container" style="height:100%;overflow-y:auto;"></div>
         </div>
     </div>
-    
-    <div id="right-panel" class="hud-panel">
-        <div class="panel-header event-log-header">// EVENT LOG</div>
-        <div class="panel-content">
-            <div class="event-log" id="event-log-container">
-                <!-- Event log entries will be dynamically added here -->
+
+    <!-- MEETING OVERLAY -->
+    <div id="meeting-overlay" class="meeting-overlay" style="display:none;">
+        <div class="meeting-container">
+            <div class="meeting-header">
+                <h2>🚨 EMERGENCY MEETING</h2>
+                <div id="meeting-reason" class="meeting-reason">Body found</div>
+            </div>
+            <div class="meeting-divider"></div>
+            <div id="meeting-statements" class="meeting-statements"></div>
+            <div class="meeting-divider"></div>
+            <div class="meeting-votes">
+                <h3>— VOTE TALLY —</h3>
+                <div id="vote-tally" class="vote-tally"></div>
+            </div>
+            <div class="meeting-divider"></div>
+            <div id="meeting-result" class="meeting-result" style="display:none;">
+                <div id="ejected-player" class="ejected-player"></div>
+                <div id="ejected-verdict" class="ejected-verdict"></div>
             </div>
         </div>
     </div>
-    
+
+    <!-- GAMEOVER OVERLAY -->
+    <div id="gameover-overlay" class="gameover-overlay" style="display:none;">
+        <div class="gameover-container">
+            <div id="gameover-title" class="gameover-title">GAME OVER</div>
+            <div id="gameover-reason" class="gameover-reason"></div>
+            <div class="gameover-divider"></div>
+            <div class="gameover-section">
+                <h3>Role Reveal</h3>
+                <div id="role-reveal" class="role-reveal-grid"></div>
+            </div>
+            <div class="gameover-divider"></div>
+            <div class="gameover-section">
+                <h3>Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item"><span class="stat-label">Rounds:</span><span id="stat-rounds" class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Tasks Done:</span><span id="stat-tasks" class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Kills:</span><span id="stat-kills" class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Impostor Caught:</span><span id="stat-ejection" class="stat-value">No</span></div>
+                </div>
+            </div>
+            <div class="gameover-divider"></div>
+            <button class="play-again-btn" onclick="playAgain()">▶ PLAY AGAIN</button>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
     <script src="worldstate.js"></script>
     <script>
-        // Event Log Management
-        const eventLogContainer = document.getElementById('event-log-container');
-        const MAX_LOG_ENTRIES = 60;
-        let logEntries = [];
+    // ============================================================
+    // EVENT LOG
+    // ============================================================
+    window.addLog = function(message, type = 'system') {
+        const log = document.getElementById('event-log-container')
+        if (!log) return
+        const time = new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })
+        const colorMap = { kill:'#ff4444', meeting:'#cc88ff', vote:'#ffcc00', task:'#00cc66', system:'#2a4a5a', victory:'#ffcc00' }
+        const item = document.createElement('div')
+        item.className = 'event-item'
+        item.innerHTML = `<span class="event-time">${time}</span><span style="color:${colorMap[type]||'#8ab4c4'}">${message}</span>`
+        log.appendChild(item)
+        log.scrollTop = log.scrollHeight
+        while (log.children.length > 80) log.removeChild(log.firstChild)
+    }
 
-        // Global addLog function
-        window.addLog = function(message, type = 'system') {
-            const timestamp = new Date();
-            const timeString = timestamp.toLocaleTimeString('en-US', { 
-                hour12: false, 
-                hour: '2-digit', 
-                minute: '2-digit', 
-                second: '2-digit' 
-            });
-            
-            const logEntry = {
-                time: timeString,
-                message: message,
-                type: type,
-                timestamp: timestamp
-            };
-            
-            logEntries.push(logEntry);
-            
-            // Limit to MAX_LOG_ENTRIES
-            if (logEntries.length > MAX_LOG_ENTRIES) {
-                logEntries.shift();
-            }
-            
-            renderEventLog();
-        };
+    // ============================================================
+    // THREE.JS SCENE
+    // ============================================================
+    window.THREE = THREE  // expose for worldstate.js
 
-        function renderEventLog() {
-            if (!eventLogContainer) return;
-            
-            let logHTML = '';
-            logEntries.forEach(entry => {
-                const icon = getEventIcon(entry.type);
-                logHTML += `
-                    <div class="event-item event-${entry.type}">
-                        <span class="event-time">[${entry.time}]</span>
-                        <span>${icon} ${entry.message}</span>
-                    </div>
-                `;
-            });
-            
-            eventLogContainer.innerHTML = logHTML;
-            
-            // Auto-scroll to bottom
-            eventLogContainer.scrollTop = eventLogContainer.scrollHeight;
-        }
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color(0x050810)
+    window.scene = scene
 
-        function getEventIcon(type) {
-            const icons = {
-                'move': '',
-                'task': '⊕',
-                'kill': '💀',
-                'meeting': '🚨',
-                'vote': '🗳',
-                'system': ''
-            };
-            return icons[type] || '';
-        }
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
+    camera.position.set(0, 18, 14)
+    camera.lookAt(0, 0, 0)
 
-        // Control Bar Functionality
-        let gameSpeed = 3;
-        let isPaused = false;
-        let currentRound = 1;
-        let cameraMode = 'orbit';
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    document.getElementById('canvas-container').appendChild(renderer.domElement)
 
-        // Speed control
-        document.getElementById('speed-dots').addEventListener('click', (e) => {
-            if (e.target.classList.contains('speed-dot')) {
-                document.querySelectorAll('.speed-dot').forEach(dot => dot.classList.remove('active'));
-                e.target.classList.add('active');
-                gameSpeed = parseInt(e.target.dataset.speed);
-                addLog(`Simulation speed set to ${gameSpeed}x`, 'system');
-            }
-        });
+    const labelRenderer = new THREE.CSS2DRenderer()
+    labelRenderer.setSize(window.innerWidth, window.innerHeight)
+    labelRenderer.domElement.style.position = 'absolute'
+    labelRenderer.domElement.style.top = '0px'
+    labelRenderer.domElement.style.pointerEvents = 'none'
+    document.getElementById('canvas-container').appendChild(labelRenderer.domElement)
 
-        // Control buttons
-        document.getElementById('start-btn').addEventListener('click', () => {
-            console.log('START BUTTON CLICKED');
-            isPaused = false;
-            addLog('Simulation started', 'system');
-            console.log('WORLD exists:', !!window.WORLD);
-            if (window.WORLD) {
-                console.log('WORLD.agents.length:', window.WORLD.agents.length);
-                console.log('WORLD.phase:', window.WORLD.phase);
-                // Spawn agents if they haven't been spawned yet
-                if (window.WORLD.agents.length === 0) {
-                    console.log('START: Spawning agents automatically...');
-                    try {
-                        window.WORLD.spawnAgents();
-                        console.log('spawnAgents completed, agent count:', window.WORLD.agents.length);
-                    } catch (error) {
-                        console.error('Error in spawnAgents:', error);
-                    }
+    const controls = new THREE.OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.05
+    controls.minDistance = 5
+    controls.maxDistance = 40
+    controls.maxPolarAngle = Math.PI / 2.1
+
+    scene.add(new THREE.AmbientLight(0x4444ff, 0.3))
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
+    dirLight.position.set(10, 20, 5)
+    dirLight.castShadow = true
+    scene.add(dirLight)
+
+    scene.add(new THREE.GridHelper(50, 50, 0x008888, 0x004444))
+
+    const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 50),
+        new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.8, metalness: 0.2 })
+    )
+    floor.rotation.x = -Math.PI / 2
+    floor.position.y = -0.01
+    floor.receiveShadow = true
+    scene.add(floor)
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight
+        camera.updateProjectionMatrix()
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        labelRenderer.setSize(window.innerWidth, window.innerHeight)
+    })
+
+    // ============================================================
+    // ROOM LAYOUT
+    // ============================================================
+    const ROOM_POSITIONS = {
+        cafeteria:  { x:  0, z: -4 },
+        reactor:    { x: -8, z:  0 },
+        medbay:     { x: -5, z:  3 },
+        security:   { x: -2, z:  1 },
+        electrical: { x:  0, z:  5 },
+        storage:    { x:  4, z:  4 },
+        admin:      { x:  6, z: -1 }
+    }
+
+    window.getRoomPosition = id => ROOM_POSITIONS[id] || { x: 0, z: 0 }
+
+    const ROOM_SIZES = {
+        Cafeteria:  { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
+        Admin:      { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
+        Reactor:    { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+        Electrical: { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+        Storage:    { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+        MedBay:     { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
+        Security:   { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
+    }
+
+    const CONNECTION_PAIRS = [
+        ['cafeteria','reactor'], ['cafeteria','security'], ['cafeteria','admin'],
+        ['reactor','medbay'],    ['medbay','security'],    ['security','electrical'],
+        ['electrical','storage'],['storage','admin']
+    ]
+
+    const roomMeshes = []
+    const connLines  = []
+
+    function buildRooms() {
+        const names = { cafeteria:'Cafeteria', reactor:'Reactor', medbay:'MedBay',
+                        security:'Security', electrical:'Electrical', storage:'Storage', admin:'Admin' }
+        Object.entries(ROOM_POSITIONS).forEach(([id, pos]) => {
+            const name = names[id]
+            const s = ROOM_SIZES[name] || ROOM_SIZES.Storage
+
+            const platform = new THREE.Mesh(
+                new THREE.CylinderGeometry(s.r, s.r, s.h, 32),
+                new THREE.MeshStandardMaterial({ color:0x0d1428, roughness:0.7, metalness:0.3, emissive:0x004444, emissiveIntensity:0.2 })
+            )
+            platform.position.set(pos.x, 0, pos.z)
+            scene.add(platform)
+
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(s.rr, s.rt, 8, 32),
+                new THREE.MeshStandardMaterial({ color:0x00ffff, emissive:0x00ffff, emissiveIntensity:0.6, roughness:0.2, metalness:0.8 })
+            )
+            ring.position.set(pos.x, 0.08, pos.z)
+            ring.rotation.x = Math.PI / 2
+            scene.add(ring)
+
+            const div = document.createElement('div')
+            div.textContent = name
+            div.style.cssText = `color:#00ffff;font-size:${s.r===1.4?'13px':'11px'};font-family:'Share Tech Mono',monospace;font-weight:bold;white-space:nowrap;text-shadow:0 0 5px rgba(0,255,255,0.8);pointer-events:none;`
+            const label = new THREE.CSS2DObject(div)
+            label.position.set(pos.x, 1.6, pos.z)
+            scene.add(label)
+
+            roomMeshes.push({ id, ring, platform })
+        })
+
+        // Connections
+        const lineMat = new THREE.LineBasicMaterial({ color:0x00e5ff, opacity:0.25, transparent:true })
+        CONNECTION_PAIRS.forEach(([a, b]) => {
+            const pa = ROOM_POSITIONS[a], pb = ROOM_POSITIONS[b]
+            const geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(pa.x, 0.2, pa.z),
+                new THREE.Vector3(pb.x, 0.2, pb.z)
+            ])
+            const line = new THREE.Line(geo, lineMat.clone())
+            scene.add(line)
+            connLines.push(line)
+        })
+    }
+
+    buildRooms()
+
+    // ============================================================
+    // AGENT MESHES
+    // ============================================================
+    window.agentMeshes  = {}
+    window.bodyMarkers  = {}
+    window.agentProgressBars = {}
+
+    window.spawnAgentMesh = function(agent) {
+        // Clean up any old mesh first
+        if (window.agentMeshes[agent.id]) {
+            const old = window.agentMeshes[agent.id]
+            old.traverse(c => {
+                if (c instanceof THREE.CSS2DObject) {
+                    if (c.parent) c.parent.remove(c)
+                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
                 }
-                console.log('Setting phase to roaming...');
-                window.WORLD.setPhase('roaming');
-                console.log('Phase set to roaming, current phase:', window.WORLD.phase);
-                
-                // Start tick timer if not already running
-                if (!tickTimer) {
-                    console.log('Starting tick timer...');
-                    tickTimer = setInterval(() => {
-                        if (window.WORLD && window.WORLD.phase === 'roaming') {
-                            window.WORLD.tick();
-                        }
-                    }, 1000); // Advance tick every second
+                if (c.geometry) c.geometry.dispose()
+                if (c.material) c.material.dispose()
+            })
+            scene.remove(old)
+            window.agentMeshes[agent.id] = null
+        }
+
+        const g = new THREE.Group()
+
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: agent.color, emissive: agent.color, emissiveIntensity: 0.4,
+            roughness: 0.3, metalness: 0.7
+        })
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16), bodyMat)
+        body.position.y = 0.3; body.castShadow = true
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
+        head.position.y = 0.6; head.castShadow = true
+
+        const feet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
+        feet.castShadow = true
+
+        const visorGeo = new THREE.SphereGeometry(0.2, 16, 16)
+        visorGeo.scale(1, 0.75, 0.5)
+        const visor = new THREE.Mesh(visorGeo,
+            new THREE.MeshStandardMaterial({ color:0xaaddff, emissive:0xaaddff, emissiveIntensity:0.8, roughness:0.1, metalness:0.9 }))
+        visor.position.set(0, 0.5, 0.25)
+
+        const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(0.35, 0.04, 8, 16),
+            new THREE.MeshStandardMaterial({ color: agent.color, emissive: agent.color, emissiveIntensity: 0.6,
+                transparent: true, opacity: 0.5, roughness: 0.1, metalness: 0.8 })
+        )
+        ring.position.y = 0.05
+        ring.rotation.x = Math.PI / 2
+        ring.userData.isGlowRing = true
+        ring.userData.pulseSpeed = 0.002
+
+        g.add(body, head, feet, visor, ring)
+
+        // Name label
+        const labelDiv = document.createElement('div')
+        labelDiv.textContent = agent.name
+        labelDiv.style.cssText = `color:${agent.color};font-size:12px;font-family:'Share Tech Mono',monospace;font-weight:bold;text-shadow:0 0 5px ${agent.color};white-space:nowrap;pointer-events:none;background:rgba(0,0,0,0.7);padding:2px 6px;border-radius:3px;border:1px solid ${agent.color};`
+        const nameLabel = new THREE.CSS2DObject(labelDiv)
+        nameLabel.position.y = 1.3
+        g.add(nameLabel)
+        agent.label = nameLabel
+
+        // Position at spawn room
+        const pos = ROOM_POSITIONS[agent.currentRoom] || { x: 0, z: 0 }
+        g.position.set(pos.x + (Math.random()-0.5)*1.2, 0.5, pos.z + (Math.random()-0.5)*1.2)
+
+        // Set initial target so lerp has a destination
+        agent.targetPosition = new THREE.Vector3(g.position.x, 0.5, g.position.z)
+        agent.isMoving = false
+
+        scene.add(g)
+        window.agentMeshes[agent.id] = g
+        agent.mesh = g
+    }
+
+    window.handleAgentDeath = function(agent) {
+        const mesh = window.agentMeshes?.[agent.id]
+        if (mesh) {
+            // Remove CSS2DObject labels during fade
+            mesh.traverse(c => {
+                if (c instanceof THREE.CSS2DObject) {
+                    if (c.parent) c.parent.remove(c)
+                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
                 }
-            } else {
-                console.error('WORLD not available when start button clicked');
-                addLog('Error: World not ready', 'system');
+            })
+            
+            // Start fade-out animation
+            mesh.userData.isDying = true
+            mesh.userData.fadeStartTime = Date.now()
+            mesh.userData.fadeDuration = 2000 // 2 seconds fade out
+            
+            // Don't set visible = false - let the animation handle it
+        }
+        if (agent.label) {
+            if (agent.label.element?.parentNode) agent.label.element.parentNode.removeChild(agent.label.element)
+            agent.label = null
+        }
+        if (window.spawnBodyMarker) window.spawnBodyMarker(agent, agent.currentRoom)
+    }
+
+    window.spawnBodyMarker = function(agent, roomId) {
+        if (window.bodyMarkers[agent.id]) {
+            scene.remove(window.bodyMarkers[agent.id])
+        }
+        const pos = ROOM_POSITIONS[roomId] || { x: 0, z: 0 }
+        const mat = new THREE.MeshBasicMaterial({ color: agent.color, transparent: true, opacity: 0.8 })
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat)
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat.clone())
+        b1.rotation.y =  Math.PI / 4
+        b2.rotation.y = -Math.PI / 4
+        const group = new THREE.Group()
+        group.add(b1, b2)
+        group.position.set(pos.x + (Math.random()-0.5)*0.8, 0.1, pos.z + (Math.random()-0.5)*0.8)
+        group.userData = { isBodyMarker: true, pulseSpeed: 0.001, originalOpacity: 0.8 }
+        scene.add(group)
+        window.bodyMarkers[agent.id] = group
+    }
+
+    // Progress bars
+    window.showAgentProgressBar = function(agentId) {
+        const agent = WORLD.agents.find(a => a.id === agentId)
+        if (!agent?.mesh) return
+        window.hideAgentProgressBar(agentId)
+
+        const wrap = document.createElement('div')
+        wrap.style.cssText = 'width:55px;height:5px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.3);border-radius:3px;overflow:hidden;pointer-events:none;'
+        const fill = document.createElement('div')
+        fill.style.cssText = 'height:100%;width:0%;background:#4caf50;transition:width 0.3s;'
+        wrap.appendChild(fill)
+
+        const obj = new THREE.CSS2DObject(wrap)
+        obj.position.set(0, -0.3, 0)
+        agent.mesh.add(obj)
+        window.agentProgressBars[agentId] = { wrap, fill, obj }
+    }
+
+    window.updateAgentProgressBar = function(agentId, pct) {
+        const bar = window.agentProgressBars[agentId]
+        if (!bar) return
+        bar.fill.style.width = Math.min(pct * 100, 100) + '%'
+        bar.fill.style.background = pct < 0.4 ? '#f44336' : pct < 0.7 ? '#ff9800' : '#4caf50'
+    }
+
+    window.hideAgentProgressBar = function(agentId) {
+        const bar = window.agentProgressBars[agentId]
+        if (!bar) return
+        if (bar.obj.parent) bar.obj.parent.remove(bar.obj)
+        if (bar.wrap.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
+        delete window.agentProgressBars[agentId]
+    }
+
+    // ============================================================
+    // PARTICLES + LIGHTS
+    // ============================================================
+    const particles = []
+    ;(function createParticles() {
+        const geo = new THREE.SphereGeometry(0.05, 6, 6)
+        const mat = new THREE.MeshBasicMaterial({ color:0x00ffff, transparent:true, opacity:0.6 })
+        for (let i = 0; i < 40; i++) {
+            const p = new THREE.Mesh(geo, mat.clone())
+            p.position.set((Math.random()-0.5)*30, Math.random()*10, (Math.random()-0.5)*30)
+            p.velocity = new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.01, (Math.random()-0.5)*0.02)
+            particles.push(p)
+            scene.add(p)
+        }
+    })()
+
+    const rotLights = []
+    for (let i = 0; i < 3; i++) {
+        const l = new THREE.PointLight(0x00ffff, 0.4, 12)
+        l.position.set(Math.cos(i * Math.PI*2/3)*15, 5, Math.sin(i * Math.PI*2/3)*15)
+        rotLights.push(l)
+        scene.add(l)
+    }
+
+    // ============================================================
+    // RENDER LOOP
+    // ============================================================
+    function animate() {
+        requestAnimationFrame(animate)
+        const t = Date.now() * 0.001
+
+        controls.update()
+
+        // Room rings
+        roomMeshes.forEach(({ ring, platform }) => {
+            if (ring) ring.material.emissiveIntensity = 0.5 + Math.sin(t * 1.5) * 0.3
+            if (ring) ring.rotation.z = t * 0.4
+            if (platform) platform.position.y = Math.sin(t * 2 + platform.position.x) * 0.05
+        })
+
+        // Particles
+        particles.forEach(p => {
+            p.position.add(p.velocity)
+            p.material.opacity = 0.2 + Math.sin(t * 3 + p.position.x) * 0.4
+            if (Math.abs(p.position.x) > 16) p.velocity.x *= -1
+            if (p.position.y > 10 || p.position.y < 0) p.velocity.y *= -1
+            if (Math.abs(p.position.z) > 16) p.velocity.z *= -1
+        })
+
+        // Rotating lights
+        rotLights.forEach((l, i) => {
+            const a = t + i * Math.PI * 2 / 3
+            l.position.x = Math.cos(a) * 15
+            l.position.z = Math.sin(a) * 15
+            l.position.y = 5 + Math.sin(t * 2) * 2
+        })
+
+        // Connection line pulse
+        connLines.forEach((line, i) => {
+            line.material.opacity = 0.15 + Math.sin(t * 2 + i * 0.5) * 0.2
+        })
+
+        // Agent glow rings pulse
+        Object.values(window.agentMeshes).forEach(g => {
+            if (!g) return
+            const ring = g.children.find(c => c.userData?.isGlowRing)
+            if (ring) {
+                const s = 1 + Math.sin(Date.now() * (ring.userData.pulseSpeed || 0.002)) * 0.12
+                ring.scale.set(s, s, 1)
             }
-        });
-
-        document.getElementById('pause-btn').addEventListener('click', () => {
-            isPaused = !isPaused;
-            addLog(isPaused ? 'Simulation paused' : 'Simulation resumed', 'system');
-        });
-
-        document.getElementById('spawn-btn').addEventListener('click', () => {
-            console.log('SPAWN BUTTON CLICKED');
-            console.log('window.WORLD exists:', !!window.WORLD);
-            console.log('window.WORLD type:', typeof window.WORLD);
-            console.log('window.WORLD.spawnAgents exists:', !!(window.WORLD && window.WORLD.spawnAgents));
-            console.log('All window properties:', Object.keys(window).filter(k => k.includes('WORLD')));
-            
-            addLog('Spawn button clicked - agents should spawn via start button', 'system');
-            if (!window.WORLD || !window.WORLD.spawnAgents) {
-                console.log('World or spawnAgents not available');
-                addLog('Error: World not ready', 'system');
-            }
-        });
-
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            currentRound = 1;
-            isPaused = false;
-            document.getElementById('round-counter').textContent = '01';
-            addLog('Simulation reset', 'system');
-            if (window.WORLD) {
-                window.WORLD.setPhase('idle');
-            }
-        });
-
-        // Camera toggle
-        document.getElementById('camera-toggle').addEventListener('click', () => {
-            cameraMode = cameraMode === 'orbit' ? 'fly' : 'orbit';
-            document.getElementById('camera-toggle').textContent = `CAM: ${cameraMode.toUpperCase()}`;
-            addLog(`Camera mode: ${cameraMode}`, 'system');
-        });
-
-        // Scene setup
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050810);
-        
-        // Camera setup - initial position looking down
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 18, 14);
-        camera.lookAt(0, 0, 0);
-        
-        // Renderer setup
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.getElementById('canvas-container').appendChild(renderer.domElement);
-
-        // CSS2DRenderer for labels
-        const labelRenderer = new THREE.CSS2DRenderer();
-        labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        labelRenderer.domElement.style.position = 'absolute';
-        labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none';
-        document.getElementById('canvas-container').appendChild(labelRenderer.domElement);
-
-        // OrbitControls for 3D camera movement
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 5;
-        controls.maxDistance = 40;
-        controls.maxPolarAngle = Math.PI / 2.1; // Prevent going below floor
-        controls.autoRotate = false;
-        controls.enablePan = true;
-        
-        // Lighting setup
-        // Ambient light (dim blue, 0.3 intensity)
-        const ambientLight = new THREE.AmbientLight(0x4444ff, 0.3);
-        scene.add(ambientLight);
-        
-        // Directional light from top-right
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(10, 20, 5);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 50;
-        directionalLight.shadow.camera.left = -25;
-        directionalLight.shadow.camera.right = 25;
-        directionalLight.shadow.camera.top = 25;
-        directionalLight.shadow.camera.bottom = -25;
-        scene.add(directionalLight);
-        
-        // Grid floor setup
-        const gridHelper = new THREE.GridHelper(50, 50, 0x008888, 0x004444);
-        gridHelper.position.y = 0;
-        scene.add(gridHelper);
-        
-        // Additional floor plane for shadows
-        const floorGeometry = new THREE.PlaneGeometry(50, 50);
-        const floorMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x050810,
-            roughness: 0.8,
-            metalness: 0.2
-        });
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -0.01;
-        floor.receiveShadow = true;
-        scene.add(floor);
-        
-        // Window resize handler
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        });
-        
-        // Room system
-        const rooms = [];
-        const connectionLines = [];
-        
-        // Agent system
-        const agents = [];
-        window.agentMeshes = window.agentMeshes || {}; // agentId -> mesh
-        window.bodyMarkers = window.bodyMarkers || {}; // agentId -> body marker mesh
-        
-        // New 7-room layout
-        const ROOMS = {
-            cafeteria:  { x:  0,  z: -4, size: 'large'  },
-            reactor:    { x: -8,  z:  0, size: 'medium' },
-            medbay:     { x: -5,  z:  3, size: 'small'  },
-            security:   { x: -2,  z:  1, size: 'small'  },
-            electrical: { x:  0,  z:  5, size: 'medium' },
-            storage:    { x:  4,  z:  4, size: 'medium' },
-            admin:      { x:  6,  z: -1, size: 'large'  }
-        };
-
-        // Define room data with new positions
-        const roomData = [
-            { name: 'Cafeteria', position: { x: ROOMS.cafeteria.x, y: 0, z: ROOMS.cafeteria.z }, size: ROOMS.cafeteria.size },
-            { name: 'Reactor', position: { x: ROOMS.reactor.x, y: 0, z: ROOMS.reactor.z }, size: ROOMS.reactor.size },
-            { name: 'MedBay', position: { x: ROOMS.medbay.x, y: 0, z: ROOMS.medbay.z }, size: ROOMS.medbay.size },
-            { name: 'Security', position: { x: ROOMS.security.x, y: 0, z: ROOMS.security.z }, size: ROOMS.security.size },
-            { name: 'Electrical', position: { x: ROOMS.electrical.x, y: 0, z: ROOMS.electrical.z }, size: ROOMS.electrical.size },
-            { name: 'Storage', position: { x: ROOMS.storage.x, y: 0, z: ROOMS.storage.z }, size: ROOMS.storage.size },
-            { name: 'Admin', position: { x: ROOMS.admin.x, y: 0, z: ROOMS.admin.z }, size: ROOMS.admin.size }
-        ];
-
-        // Connection pairs for 7-room layout
-        const connectionPairs = [
-            { from: 'cafeteria', to: 'reactor' },
-            { from: 'cafeteria', to: 'security' },
-            { from: 'cafeteria', to: 'admin' },
-            { from: 'reactor', to: 'medbay' },
-            { from: 'medbay', to: 'security' },
-            { from: 'security', to: 'electrical' },
-            { from: 'electrical', to: 'storage' },
-            { from: 'storage', to: 'admin' }
-        ];
-        
-        // Get room size parameters based on importance for 7-room layout
-        function getRoomSize(roomName) {
-            // Large rooms (radius 1.4): cafeteria, admin
-            const largeRooms = ['Cafeteria', 'Admin'];
-            // Medium rooms (radius 1.0): reactor, electrical, storage
-            const mediumRooms = ['Reactor', 'Electrical', 'Storage'];
-            // Small rooms (radius 0.7): medbay, security
-            const smallRooms = ['MedBay', 'Security'];
-            
-            if (largeRooms.includes(roomName)) {
-                return { radius: 1.4, height: 0.2, ringRadius: 1.6, ringThickness: 0.12 };
-            } else if (mediumRooms.includes(roomName)) {
-                return { radius: 1.0, height: 0.15, ringRadius: 1.2, ringThickness: 0.1 };
-            } else if (smallRooms.includes(roomName)) {
-                return { radius: 0.7, height: 0.12, ringRadius: 0.9, ringThickness: 0.08 };
-            } else {
-                return { radius: 1.0, height: 0.15, ringRadius: 1.2, ringThickness: 0.1 }; // default medium
-            }
-        }
-
-        // Create room function
-        function createRoom(roomData) {
-            const room = {
-                name: roomData.name,
-                position: new THREE.Vector3(roomData.position.x, roomData.position.y, roomData.position.z),
-                connections: roomData.connections,
-                mesh: null,
-                ring: null,
-                label: null
-            };
-            
-            const sizeParams = getRoomSize(roomData.name);
-            
-            // Create platform (flat cylinder with importance-based size)
-            const platformGeometry = new THREE.CylinderGeometry(sizeParams.radius, sizeParams.radius, sizeParams.height, 32);
-            const platformMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x0d1428,
-                roughness: 0.7,
-                metalness: 0.3,
-                emissive: 0x004444,
-                emissiveIntensity: 0.2
-            });
-            room.mesh = new THREE.Mesh(platformGeometry, platformMaterial);
-            room.mesh.position.copy(room.position);
-            room.mesh.castShadow = true;
-            room.mesh.receiveShadow = true;
-            scene.add(room.mesh);
-            
-            // Create glowing ring (torus with radius = platform radius + 0.2)
-            const ringGeometry = new THREE.TorusGeometry(sizeParams.ringRadius, sizeParams.ringThickness, 8, 32);
-            const ringMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x00ffff,
-                roughness: 0.2,
-                metalness: 0.8,
-                emissive: 0x00ffff,
-                emissiveIntensity: 0.6
-            });
-            room.ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            room.ring.position.copy(room.position);
-            room.ring.position.y += 0.08; // Adjusted for y = 0
-            room.ring.rotation.x = Math.PI / 2;
-            scene.add(room.ring);
-            
-            // Create label with importance-based font size
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'room-label';
-            labelDiv.textContent = room.name;
-            const fontSize = sizeParams.radius === 1.4 ? '14px' : sizeParams.radius === 0.7 ? '10px' : '12px';
-            labelDiv.style.color = '#00ffff';
-            labelDiv.style.fontSize = fontSize;
-            labelDiv.style.fontFamily = 'Courier New, monospace';
-            labelDiv.style.textShadow = '0 0 5px rgba(0, 255, 255, 0.8)';
-            labelDiv.style.fontWeight = 'bold';
-            labelDiv.style.whiteSpace = 'nowrap';
-            
-            room.label = new THREE.CSS2DObject(labelDiv);
-            room.label.position.copy(room.position);
-            room.label.position.y += 1.5; // Adjusted for y = 0
-            scene.add(room.label);
-            
-            return room;
-        }
-        
-        // Create simple line connections between rooms
-        function createConnectionLines() {
-            console.log('=== CREATING ROOM CONNECTIONS ===');
-            
-            // Clear existing connections
-            connectionLines.forEach(line => scene.remove(line));
-            connectionLines.length = 0;
-            
-            const connectionMaterial = new THREE.LineBasicMaterial({
-                color: 0x00e5ff,
-                opacity: 0.25,
-                transparent: true
-            });
-            
-            connectionPairs.forEach(pair => {
-                const fromRoom = rooms.find(r => r.name.toLowerCase() === pair.from);
-                const toRoom = rooms.find(r => r.name.toLowerCase() === pair.to);
-                
-                if (fromRoom && toRoom) {
-                    // Create line geometry between room centers
-                    const points = [
-                        new THREE.Vector3(fromRoom.position.x, 0.2, fromRoom.position.z),
-                        new THREE.Vector3(toRoom.position.x, 0.2, toRoom.position.z)
-                    ];
-                    
-                    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-                    const line = new THREE.Line(lineGeometry, connectionMaterial);
-                    
-                    scene.add(line);
-                    connectionLines.push(line);
-                    
-                    // Log connection to console for verification
-                    console.log(`Connection: ${fromRoom.name} ↔ ${toRoom.name}`);
-                    console.log(`  From: (${fromRoom.position.x}, ${fromRoom.position.z})`);
-                    console.log(`  To: (${toRoom.position.x}, ${toRoom.position.z})`);
-                } else {
-                    console.log(`FAILED to create connection: ${pair.from} ↔ ${pair.to}`);
-                    console.log(`  From room found: ${!!fromRoom}`);
-                    console.log(`  To room found: ${!!toRoom}`);
-                }
-            });
-            
-            console.log(`Created ${connectionLines.length} connection lines`);
-            console.log('=== END ROOM CONNECTIONS ===');
-        }
-        
-        // Create all rooms
-        function createRooms() {
-            roomData.forEach(data => {
-                const room = createRoom(data);
-                rooms.push(room);
-            });
-        }
-        
-        // Clear existing rooms and connections
-        function clearRooms() {
-            // Remove all room meshes, rings, and labels
-            rooms.forEach(room => {
-                if (room.mesh) scene.remove(room.mesh);
-                if (room.ring) scene.remove(room.ring);
-                if (room.label) scene.remove(room.label);
-            });
-            rooms.length = 0;
-            
-            // Remove all connection lines
-            connectionLines.forEach(line => scene.remove(line));
-            connectionLines.length = 0;
-        }
-
-        // Create rooms and connections
-        clearRooms();
-        createRooms();
-        createConnectionLines();
-        
-        // Get room position helper function
-        window.getRoomPosition = function(roomId) {
-            const roomPositions = {
-                cafeteria: { x: 0, z: -4 },
-                reactor: { x: -8, z: 0 },
-                medbay: { x: -5, z: 3 },
-                security: { x: -2, z: 1 },
-                electrical: { x: 0, z: 5 },
-                storage: { x: 4, z: 4 },
-                admin: { x: 6, z: -1 }
-            };
-            return roomPositions[roomId] || { x: 0, z: 0 };
-        }
-
-        // Agent mesh creation function
-        window.spawnAgentMesh = function(agent) {
-            console.log('=== SPAWNING MESH FOR ===', agent.name, 'id:', agent.id, 'color:', agent.color)
-            console.log('Current agentMeshes size before spawn:', Object.keys(window.agentMeshes || {}).length)
-            
-            // Create agent group
-            const agentGroup = new THREE.Group();
-            
-            // Body: capsule shape using CylinderGeometry + 2 SphereGeometry on top/bottom
-            const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16);
-            const bodyMaterial = new THREE.MeshStandardMaterial({
-                color: agent.color,
-                roughness: 0.3,
-                metalness: 0.7,
-                emissive: agent.color,
-                emissiveIntensity: 0.4
-            });
-            
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = 0.3;
-            body.castShadow = true;
-            body.receiveShadow = true;
-            
-            // Top sphere (head)
-            const topSphereGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-            const topSphere = new THREE.Mesh(topSphereGeometry, bodyMaterial);
-            topSphere.position.y = 0.6;
-            topSphere.castShadow = true;
-            
-            // Bottom sphere (feet)
-            const bottomSphereGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-            const bottomSphere = new THREE.Mesh(bottomSphereGeometry, bodyMaterial);
-            bottomSphere.position.y = 0;
-            bottomSphere.castShadow = true;
-            
-            // Visor: small flattened sphere on front-upper body
-            const visorGeometry = new THREE.SphereGeometry(0.2, 16, 16);
-            visorGeometry.scale(1, 0.75, 0.5); // Scale to flatten it
-            const visorMaterial = new THREE.MeshStandardMaterial({
-                color: 0xaaddff,
-                emissive: 0xaaddff,
-                emissiveIntensity: 0.8,
-                roughness: 0.1,
-                metalness: 0.9
-            });
-            
-            const visor = new THREE.Mesh(visorGeometry, visorMaterial);
-            visor.position.set(0, 0.5, 0.25); // Front-upper position
-            visor.castShadow = true;
-            
-            // Glow ring at feet: torus, radius 0.35, tube 0.04, color agent.color, opacity 0.5
-            const glowRingGeometry = new THREE.TorusGeometry(0.35, 0.04, 8, 16);
-            const glowRingMaterial = new THREE.MeshStandardMaterial({
-                color: agent.color,
-                transparent: true,
-                opacity: 0.5,
-                emissive: agent.color,
-                emissiveIntensity: 0.6,
-                roughness: 0.1,
-                metalness: 0.8
-            });
-            
-            const glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
-            glowRing.position.y = 0.05;
-            glowRing.rotation.x = Math.PI / 2; // Lay flat
-            glowRing.userData.isGlowRing = true;
-            glowRing.userData.pulseSpeed = 0.002; // Default pulse speed
-            
-            // Add all parts to group
-            agentGroup.add(body);
-            agentGroup.add(topSphere);
-            agentGroup.add(bottomSphere);
-            agentGroup.add(visor);
-            agentGroup.add(glowRing);
-            
-            // Name tag: CSS2DObject floating 1 unit above agent, shows agent.name in agent.color
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'agent-label';
-            labelDiv.textContent = agent.name;
-            labelDiv.style.color = agent.color;
-            labelDiv.style.fontSize = '12px';
-            labelDiv.style.fontFamily = 'Courier New, monospace';
-            labelDiv.style.fontWeight = 'bold';
-            labelDiv.style.textShadow = `0 0 5px ${agent.color}`;
-            labelDiv.style.whiteSpace = 'nowrap';
-            labelDiv.style.pointerEvents = 'none';
-            labelDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            labelDiv.style.padding = '2px 6px';
-            labelDiv.style.borderRadius = '3px';
-            labelDiv.style.border = `1px solid ${agent.color}`;
-            
-            const nameLabel = new THREE.CSS2DObject(labelDiv);
-            nameLabel.position.y = 1.2; // 1 unit above agent
-            
-            agentGroup.add(nameLabel);
-            
-            // Position agent at room location with slight random offset
-            const roomPos = getRoomPosition(agent.currentRoom);
-            agentGroup.position.set(
-                roomPos.x + (Math.random() - 0.5) * 1.5,
-                0.5,
-                roomPos.z + (Math.random() - 0.5) * 1.5
-            );
-            
-            // Add to scene and store reference
-            scene.add(agentGroup);
-            console.log('Mesh added to scene for:', agent.name, 'position:', agentGroup.position)
-            console.log('Total scene children:', scene.children.length)
-            window.agentMeshes[agent.id] = agentGroup;
-            console.log('Mesh stored in agentMeshes object, new size:', Object.keys(window.agentMeshes || {}).length)
-            console.log('agentMeshes keys after spawn:', Object.keys(window.agentMeshes || {}))
-            
-            // Verify mesh was stored correctly
-            const storedMesh = window.agentMeshes[agent.id]
-            console.log('Verification - mesh retrieved from object:', !!storedMesh)
-            
-            // Store mesh reference on agent object
-            agent.mesh = agentGroup;
-            
-            console.log(`✅ SUCCESS: Created detailed 3D mesh for ${agent.name} in ${agent.currentRoom}`);
-        };
-
-        // Update agent mesh position when moving between rooms
-        window.updateAgentMeshPosition = function(agent) {
-            if (!agent.mesh) return;
-            
-            const roomPos = getRoomPosition(agent.currentRoom);
-            agent.mesh.position.set(
-                roomPos.x + (Math.random() - 0.5) * 1.5,
-                0.5,
-                roomPos.z + (Math.random() - 0.5) * 1.5
-            );
-            
-            console.log(`Updated ${agent.name} position to ${agent.currentRoom}:`, agent.mesh.position);
-        };
-
-        // Body marker system
-        window.spawnBodyMarker = function(agent, roomId) {
-            const pos = getRoomPosition(roomId);
-            
-            // Flat X shape lying on ground
-            const material = new THREE.MeshBasicMaterial({ 
-                color: agent.color, 
-                transparent: true, 
-                opacity: 0.8 
-            });
-            
-            // Two flat boxes crossed = X shape
-            const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), material);
-            const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), material);
-            bar1.rotation.y = Math.PI / 4;
-            bar2.rotation.y = -Math.PI / 4;
-            
-            const bodyGroup = new THREE.Group();
-            bodyGroup.add(bar1, bar2);
-            bodyGroup.position.set(pos.x + 0.4, 0.1, pos.z + 0.4); // offset inside room
-            scene.add(bodyGroup);
-            
-            // Store body marker
-            window.bodyMarkers[agent.id] = bodyGroup;
-            
-            // Slow pulse animation on the body marker
-            bodyGroup.userData = { 
-                isBodyMarker: true,
-                pulseSpeed: 0.001,
-                originalOpacity: 0.8
-            };
-            
-            console.log(`Body marker spawned for ${agent.name} in room ${roomId}`);
-        };
-
-        window.removeBodyMarker = function(agentId) {
-            const bodyMarker = window.bodyMarkers[agentId];
-            if (bodyMarker && scene) {
-                scene.remove(bodyMarker);
-                window.bodyMarkers[agentId] = undefined;
-                console.log(`Body marker removed for agent ${agentId}`);
-            }
-        };
-        
-        // Add floating particles for dynamic effect
-        const particles = [];
-        function createParticles() {
-            const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-            const particleMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff,
-                transparent: true,
-                opacity: 0.8
-            });
-            
-            for (let i = 0; i < 50; i++) {
-                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
-                particle.position.set(
-                    (Math.random() - 0.5) * 30,
-                    Math.random() * 10,
-                    (Math.random() - 0.5) * 30
-                );
-                particle.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.02,
-                    Math.random() * 0.01,
-                    (Math.random() - 0.5) * 0.02
-                );
-                particles.push(particle);
-                scene.add(particle);
-            }
-        }
-        
-        // Add rotating lights
-        const rotatingLights = [];
-        function createRotatingLights() {
-            for (let i = 0; i < 3; i++) {
-                const light = new THREE.PointLight(0x00ffff, 0.5, 10);
-                light.position.set(
-                    Math.cos(i * Math.PI * 2 / 3) * 15,
-                    5,
-                    Math.sin(i * Math.PI * 2 / 3) * 15
-                );
-                rotatingLights.push(light);
-                scene.add(light);
-            }
-        }
-        
-        // Create dynamic elements
-        createParticles();
-        createRotatingLights();
-        
-        // Game loop variables
-        let lastTickTime = 0;
-        const tickInterval = 1000; // 1 second between ticks (adjustable)
-
-        // Render loop
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            const time = Date.now() * 0.001;
-            
-            // Game tick system
-            if (window.WORLD && window.WORLD.phase === 'roaming') {
-                if (time - lastTickTime >= tickInterval / 1000) {
-                    window.WORLD.advanceTick();
-                    lastTickTime = time;
-                }
-            }
-            
-            // Update OrbitControls for smooth camera movement
-            controls.update();
-            
-            // Animate room rings with more visible rotation and pulsing
-            rooms.forEach(room => {
-                if (room.ring) {
-                    room.ring.material.emissiveIntensity = 0.6 + Math.sin(time + room.position.x) * 0.4;
-                    room.ring.rotation.z = time * 0.5; // Rotate the rings
-                }
-                // Float the platforms slightly
-                if (room.mesh) {
-                    room.mesh.position.y = Math.sin(time * 2 + room.position.x) * 0.1;
-                }
-            });
-            
-            // Animate particles
-            particles.forEach(particle => {
-                particle.position.add(particle.velocity);
-                particle.material.opacity = 0.3 + Math.sin(time * 3 + particle.position.x) * 0.5;
-                
-                // Wrap particles around boundaries
-                if (Math.abs(particle.position.x) > 15) particle.velocity.x *= -1;
-                if (particle.position.y > 10 || particle.position.y < 0) particle.velocity.y *= -1;
-                if (Math.abs(particle.position.z) > 15) particle.velocity.z *= -1;
-            });
-            
-            // Rotate lights around the scene
-            rotatingLights.forEach((light, i) => {
-                const angle = time + i * Math.PI * 2 / 3;
-                light.position.x = Math.cos(angle) * 15;
-                light.position.z = Math.sin(angle) * 15;
-                light.position.y = 5 + Math.sin(time * 2) * 2;
-                light.intensity = 0.3 + Math.sin(time * 3 + i) * 0.2;
-            });
-            
-            // Animate glow rings with pulsing effect
-            connectionLines.forEach((line, i) => {
-                const material = line.material;
-                material.opacity = 0.3 + Math.sin(time * 2 + i * 0.5) * 0.3;
-            });
-            
-            // Animate agent glow rings with suspicion-based pulse speed
-            Object.values(window.agentMeshes || {}).forEach((agentGroup) => {
-                if (!agentGroup || !agentGroup.children) return;
-                const glowRing = agentGroup.children.find(child => child.userData.isGlowRing);
-                if (glowRing) {
-                    const pulseSpeed = glowRing.userData.pulseSpeed || 0.002;
-                    const scale = 1 + Math.sin(Date.now() * pulseSpeed) * 0.1;
-                    glowRing.scale.set(scale, scale, 1);
-                }
-            });
-            
-            // Animate body markers with slow pulse
-            Object.values(window.bodyMarkers || {}).forEach((bodyGroup) => {
-                if (!bodyGroup || !bodyGroup.userData || !bodyGroup.children) return;
-                if (bodyGroup.userData.isBodyMarker) {
-                    const pulseSpeed = bodyGroup.userData.pulseSpeed || 0.001;
-                    const opacity = bodyGroup.userData.originalOpacity + Math.sin(Date.now() * pulseSpeed) * 0.2;
-                    bodyGroup.children.forEach(child => {
-                        if (child.material) {
-                            child.material.opacity = Math.max(0.4, Math.min(1.0, opacity));
-                        }
-                    });
-                }
-            });
-
-            // Smooth agent movement every frame
-            if (window.WORLD && window.WORLD.agents) {
-                for (const agent of WORLD.agents) {
-                    const mesh = window.agentMeshes?.[agent.id]
-                    if (!mesh || !agent.targetPosition) continue
-
-                    if (agent.isMoving) {
-                        mesh.position.lerp(agent.targetPosition, 0.02)
-                        // Rotate to face direction of movement
-                        mesh.rotation.y += 0.03
-                        // Arrived?
-                        if (mesh.position.distanceTo(agent.targetPosition) < 0.1) {
-                            mesh.position.copy(agent.targetPosition)
-                            agent.isMoving = false
-                            mesh.rotation.y = 0
-                        }
-                    } else {
-                        // Idle bob animation - consistent for all agents
-                        mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002) * 0.06
-                    }
-                }
-            }
-            
-            renderer.render(scene, camera);
-            labelRenderer.render(scene, camera);
-        }
-        
-        // Start the render loop
-        animate();
-        
-        console.log('Three.js scene initialized successfully');
-        console.log('Camera position:', camera.position);
-        console.log('Scene background color:', scene.background.getHexString());
-    </script>
-
-    <!-- Emergency Meeting Overlay -->
-    <div id="meeting-overlay" class="meeting-overlay" style="display: none;">
-        <div class="meeting-container">
-            <div class="meeting-header">
-                <h2>🚨 EMERGENCY MEETING</h2>
-                <div id="meeting-reason" class="meeting-reason">Body found: VERA</div>
-            </div>
-            
-            <div class="meeting-divider"></div>
-            
-            <div id="meeting-statements" class="meeting-statements">
-                <!-- Statements will be added here dynamically -->
-            </div>
-            
-            <div class="meeting-divider"></div>
-            
-            <div id="meeting-votes" class="meeting-votes">
-                <h3>— VOTE TALLY —</h3>
-                <div id="vote-tally" class="vote-tally">
-                    <!-- Vote bars will be added here dynamically -->
-                </div>
-            </div>
-            
-            <div class="meeting-divider"></div>
-            
-            <div id="meeting-result" class="meeting-result" style="display: none;">
-                <div id="ejected-player" class="ejected-player">💀 KAGE was ejected.</div>
-                <div id="ejected-verdict" class="ejected-verdict">✓ They WERE the impostor.</div>
-            </div>
-        </div>
-    </div>
-
-    <style>
-        .meeting-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.92);
-            backdrop-filter: blur(10px);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            font-family: 'Courier New', monospace;
-        }
-
-        .meeting-container {
-            background: rgba(20, 20, 30, 0.95);
-            border: 2px solid #ab47bc;
-            border-radius: 12px;
-            padding: 30px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 0 40px rgba(171, 71, 188, 0.4);
-        }
-
-        .meeting-header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .meeting-header h2 {
-            color: #ab47bc;
-            font-size: 28px;
-            margin: 0;
-            text-shadow: 0 0 10px rgba(171, 71, 188, 0.6);
-        }
-
-        .meeting-reason {
-            color: #ff6b6b;
-            font-size: 16px;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-
-        .meeting-divider {
-            height: 1px;
-            background: linear-gradient(to right, transparent, #ab47bc, transparent);
-            margin: 20px 0;
-        }
-
-        .meeting-statements {
-            min-height: 150px;
-            margin: 20px 0;
-        }
-
-        .statement {
-            color: #ffffff;
-            margin: 10px 0;
-            padding: 8px;
-            background: rgba(171, 71, 188, 0.1);
-            border-left: 3px solid #ab47bc;
-            border-radius: 4px;
-            opacity: 0;
-            transform: translateX(-20px);
-            animation: slideIn 0.3s forwards;
-        }
-
-        .statement .speaker {
-            color: #ab47bc;
-            font-weight: bold;
-        }
-
-        @keyframes slideIn {
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .meeting-votes {
-            margin: 20px 0;
-        }
-
-        .meeting-votes h3 {
-            color: #ab47bc;
-            text-align: center;
-            margin: 0 0 15px 0;
-        }
-
-        .vote-tally {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .vote-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .vote-name {
-            color: #ffffff;
-            width: 80px;
-            font-weight: bold;
-        }
-
-        .vote-bar-container {
-            flex: 1;
-            height: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .vote-bar {
-            height: 100%;
-            background: linear-gradient(to right, #ab47bc, #8e24aa);
-            border-radius: 10px;
-            width: 0;
-            transition: width 1s ease-out;
-        }
-
-        .vote-count {
-            color: #ffffff;
-            margin-left: 10px;
-            font-size: 14px;
-        }
-
-        .meeting-result {
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 8px;
-        }
-
-        .ejected-player {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .ejected-verdict {
-            font-size: 16px;
-        }
-
-        .ejected-impostor {
-            background: rgba(76, 175, 80, 0.2);
-            border: 1px solid #4caf50;
-            color: #4caf50;
-        }
-
-        .ejected-innocent {
-            background: rgba(244, 67, 54, 0.2);
-            border: 1px solid #f44336;
-            color: #f44336;
-        }
-    </style>
-
-    <script>
-        // Meeting system
-        let meetingInProgress = false;
-
-        async function showEmergencyMeeting(reason, bodyFound) {
-            if (meetingInProgress) return;
-            meetingInProgress = true;
-
-            const overlay = document.getElementById('meeting-overlay');
-            const reasonElement = document.getElementById('meeting-reason');
-            const statementsContainer = document.getElementById('meeting-statements');
-            const voteTally = document.getElementById('vote-tally');
-            const resultContainer = document.getElementById('meeting-result');
-
-            // Clear previous content
-            statementsContainer.innerHTML = '';
-            voteTally.innerHTML = '';
-            resultContainer.style.display = 'none';
-
-            // Set meeting reason
-            reasonElement.textContent = reason;
-
-            // Show overlay
-            overlay.style.display = 'flex';
-
-            // Get statements from alive agents
-            const aliveAgents = WORLD.agents.filter(a => a.alive);
-            const statements = [];
-
-            // Stream statements with 400ms delay
-            for (let i = 0; i < aliveAgents.length; i++) {
-                const agent = aliveAgents[i];
-                const statement = getAgentStatement(agent, { bodyFound });
-                statements.push({ name: agent.name, statement });
-                
-                // Add statement to UI with animation
-                const statementElement = document.createElement('div');
-                statementElement.className = 'statement';
-                statementElement.innerHTML = `<span class="speaker">${agent.name}:</span> "${statement}"`;
-                statementElement.style.animationDelay = `${i * 0.4}s`;
-                statementsContainer.appendChild(statementElement);
-
-                // Wait for animation
-                await new Promise(resolve => setTimeout(resolve, 400));
-            }
-
-            // Wait a bit for statements to finish
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Run voting
-            const votes = runMeetingVotes(aliveAgents, { aliveAgents });
-
-            // Show vote tally
-            const voteCounts = {};
-            votes.forEach(vote => {
-                if (vote.vote) {
-                    voteCounts[vote.vote] = (voteCounts[vote.vote] || 0) + 1;
-                }
-            });
-
-            // Create vote bars with animation
-            const maxVotes = Math.max(...Object.values(voteCounts));
-            Object.entries(voteCounts).forEach(([name, count], index) => {
-                const voteItem = document.createElement('div');
-                voteItem.className = 'vote-item';
-                voteItem.innerHTML = `
-                    <div class="vote-name">${name}</div>
-                    <div class="vote-bar-container">
-                        <div class="vote-bar" style="width: ${(count / maxVotes) * 100}%"></div>
-                    </div>
-                    <div class="vote-count">${count} vote${count !== 1 ? 's' : ''}</div>
-                `;
-                voteTally.appendChild(voteItem);
-            });
-
-            // Wait for votes to display
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            // Determine ejected player
-            const ejected = Object.entries(voteCounts)
-                .sort((a, b) => b[1] - a[1])[0];
-
-            if (ejected) {
-                const [ejectedName, voteCount] = ejected;
-                const ejectedAgent = WORLD.agents.find(a => a.name === ejectedName);
-                const wasImpostor = ejectedAgent?.role === 'impostor';
-
-                // Show result
-                const ejectedPlayerElement = document.getElementById('ejected-player');
-                const ejectedVerdictElement = document.getElementById('ejected-verdict');
-                
-                ejectedPlayerElement.textContent = `💀 ${ejectedName} was ejected.`;
-                ejectedVerdictElement.textContent = wasImpostor 
-                    ? '✓ They WERE the impostor.' 
-                    : '✗ They were NOT the impostor.';
-
-                resultContainer.className = 'meeting-result ' + (wasImpostor ? 'ejected-impostor' : 'ejected-innocent');
-                resultContainer.style.display = 'block';
-
-                // Update game state
-                if (ejectedAgent) {
-                    ejectedAgent.alive = false;
-                    document.dispatchEvent(new CustomEvent('agentDied', {
-                        detail: { agent: ejectedAgent, killer: null, room: 'meeting' }
-                    }));
-                }
-            }
-
-            // Auto-dismiss after 3 seconds
-            setTimeout(() => {
-                overlay.style.display = 'none';
-                meetingInProgress = false;
-                
-                // Resume game
-                if (WORLD) {
-                    WORLD.phase = 'roaming';
-                    WORLD.pendingMeeting = false;
-                    WORLD.bodyFound = null;
-                }
-            }, 3000);
-        }
-
-        // Listen for pending meetings and trigger complete sequence
-        setInterval(() => {
-            if (WORLD && WORLD.pendingMeeting && !meetingInProgress) {
-                meetingInProgress = true;
-                triggerMeeting();
-            }
-        }, 1000);
-
-        // Export for testing
-        window.showEmergencyMeeting = showEmergencyMeeting;
-    </script>
-
-    <!-- Game Over Overlay -->
-    <div id="gameover-overlay" class="gameover-overlay" style="display: none;">
-        <div class="gameover-container">
-            <div id="gameover-title" class="gameover-title">CREWMATES WIN</div>
-            <div id="gameover-reason" class="gameover-reason">All tasks completed</div>
-            
-            <div class="gameover-divider"></div>
-            
-            <div class="gameover-section">
-                <h3>ROLE REVEAL</h3>
-                <div id="role-reveal" class="role-reveal">
-                    <!-- Roles will be added here -->
-                </div>
-            </div>
-            
-            <div class="gameover-divider"></div>
-            
-            <div class="gameover-stats">
-                <h3>GAME STATISTICS</h3>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Rounds Survived:</span>
-                        <span id="stat-rounds" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Tasks Completed:</span>
-                        <span id="stat-tasks" class="stat-value">0/18</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Kills Made:</span>
-                        <span id="stat-kills" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Correct Ejection:</span>
-                        <span id="stat-ejection" class="stat-value">No</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="gameover-divider"></div>
-            
-            <button id="play-again-btn" class="play-again-btn" onclick="playAgain()">
-                ▶ PLAY AGAIN
-            </button>
-        </div>
-    </div>
-
-    <style>
-        .gameover-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.95);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-            font-family: 'Courier New', monospace;
-        }
-
-        .gameover-container {
-            background: rgba(20, 20, 30, 0.98);
-            border: 2px solid #ab47bc;
-            border-radius: 16px;
-            padding: 40px;
-            max-width: 700px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-            text-align: center;
-            transform: scale(0.8);
-            opacity: 0;
-            animation: gameoverReveal 0.6s ease-out forwards;
-            box-shadow: 0 0 60px rgba(171, 71, 188, 0.6);
-        }
-
-        @keyframes gameoverReveal {
-            to {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-
-        .gameover-title {
-            font-size: 48px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            text-shadow: 0 0 20px currentColor;
-        }
-
-        .gameover-title.crewmate-win {
-            color: #00bcd4; /* Cyan */
-        }
-
-        .gameover-title.impostor-win {
-            color: #f44336; /* Red */
-        }
-
-        .gameover-reason {
-            font-size: 20px;
-            color: #ffffff;
-            margin-bottom: 30px;
-            opacity: 0.9;
-        }
-
-        .gameover-divider {
-            height: 1px;
-            background: linear-gradient(to right, transparent, #ab47bc, transparent);
-            margin: 25px 0;
-        }
-
-        .gameover-section h3 {
-            color: #ab47bc;
-            font-size: 18px;
-            margin: 0 0 15px 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .role-reveal {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .role-item {
-            background: rgba(171, 71, 188, 0.1);
-            border: 1px solid rgba(171, 71, 188, 0.3);
-            border-radius: 8px;
-            padding: 10px;
-            text-align: left;
-        }
-
-        .role-name {
-            color: #ffffff;
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        .role-status {
-            font-size: 12px;
-            margin-top: 4px;
-        }
-
-        .role-status.crewmate {
-            color: #4caf50;
-        }
-
-        .role-status.impostor {
-            color: #f44336;
-        }
-
-        .role-status.dead {
-            opacity: 0.6;
-            text-decoration: line-through;
-        }
-
-        .gameover-stats {
-            margin: 20px 0;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .stat-item {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .stat-label {
-            color: #ffffff;
-            font-size: 14px;
-            opacity: 0.8;
-        }
-
-        .stat-value {
-            color: #ab47bc;
-            font-weight: bold;
-            font-size: 16px;
-        }
-
-        .play-again-btn {
-            background: linear-gradient(135deg, #ab47bc, #8e24aa);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 15px 40px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 20px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(171, 71, 188, 0.4);
-        }
-
-        .play-again-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(171, 71, 188, 0.6);
-            background: linear-gradient(135deg, #8e24aa, #6a1b9a);
-        }
-
-        .play-again-btn:active {
-            transform: translateY(0);
-        }
-    </style>
-
-    <script>
-        // Global tick timer variable
-        let tickTimer = null;
-
-        // Control buttons
-        document.getElementById('start-btn').addEventListener('click', () => {
-            console.log('START BUTTON CLICKED');
-            isPaused = false;
-            addLog('Simulation started', 'system');
-            console.log('WORLD exists:', !!window.WORLD);
-            if (window.WORLD) {
-                console.log('WORLD.agents.length:', window.WORLD.agents.length);
-                console.log('WORLD.phase:', window.WORLD.phase);
-                // Spawn agents if they haven't been spawned yet
-                if (window.WORLD.agents.length === 0) {
-                    console.log('START: Spawning agents automatically...');
-                    try {
-                        window.WORLD.spawnAgents();
-                        console.log('spawnAgents completed, agent count:', window.WORLD.agents.length);
-                    } catch (error) {
-                        console.error('Error in spawnAgents:', error);
-                    }
-                }
-                console.log('Setting phase to roaming...');
-                window.WORLD.setPhase('roaming');
-                console.log('Phase set to roaming, current phase:', window.WORLD.phase);
-                
-                // Start tick timer if not already running
-                if (!tickTimer) {
-                    console.log('Starting tick timer...');
-                    tickTimer = setInterval(() => {
-                        if (window.WORLD && window.WORLD.phase === 'roaming') {
-                            window.WORLD.tick();
-                        }
-                    }, 1000); // Advance tick every second
-                }
-            } else {
-                console.error('WORLD not available when start button clicked');
-                addLog('Error: World not ready', 'system');
-            }
-        });
-
-        function endGame(winner) {
-            try {
-                console.log('[ENDGAME] Starting end game for winner:', winner)
-                WORLD.setPhase('gameover')
-                if (tickTimer) clearInterval(tickTimer)
-
-                const isCrewWin = winner === 'crewmates'
-                
-                // Calculate stats
-                const totalTasks = WORLD.getTotalTasks()
-                const completedTasks = WORLD.getCompletedTasks()
-                const totalKills = WORLD.agents.filter(a => !a.alive && a.role === 'crewmate').length
-                const rounds = Math.floor(WORLD.gameTick / 10) + 1 // Convert ticks to rounds (10 ticks = 1 round)
-                
-                console.log('[ENDGAME] Stats:', { totalTasks, completedTasks, totalKills, rounds })
-                
-                // Check if correct ejection happened
-                const ejectedAgents = WORLD.agents.filter(a => !a.alive)
-                const correctEjection = ejectedAgents.some(a => a.role === 'impostor')
-
-                // Update title and reason
-                const titleElement = document.getElementById('gameover-title')
-                const reasonElement = document.getElementById('gameover-reason')
-                
-                if (!titleElement || !reasonElement) {
-                    console.error('[ENDGAME] Missing UI elements')
-                    return
-                }
-                
-                titleElement.textContent = isCrewWin ? 'CREWMATES WIN' : 'IMPOSTORS WIN'
-                titleElement.className = 'gameover-title ' + (isCrewWin ? 'crewmate-win' : 'impostor-win')
-                
-                // Determine win reason
-                let reason = ''
-                if (isCrewWin) {
-                    if (completedTasks === totalTasks) {
-                        reason = 'All tasks completed'
-                    } else if (WORLD.agents.filter(a => a.alive && a.role === 'impostor').length === 0) {
-                        reason = 'All impostors ejected'
-                    } else {
-                        reason = 'Crewmates victory'
+        })
+
+        // Body marker pulse
+        Object.values(window.bodyMarkers).forEach(g => {
+            if (!g?.userData?.isBodyMarker) return
+            const op = g.userData.originalOpacity + Math.sin(Date.now() * g.userData.pulseSpeed) * 0.2
+            g.children.forEach(c => { if (c.material) c.material.opacity = Math.max(0.3, Math.min(1, op)) })
+        })
+
+        // ✅ SMOOTH MOVEMENT — lerp toward targetPosition every frame
+        if (window.WORLD?.agents) {
+            for (const agent of WORLD.agents) {
+                if (!agent.alive) continue
+                const mesh = window.agentMeshes?.[agent.id]
+                if (!mesh || !agent.targetPosition) continue
+
+                if (agent.isMoving) {
+                    // Lerp speed: 0.04 = smooth but not too slow
+                    mesh.position.lerp(agent.targetPosition, 0.04)
+                    mesh.rotation.y += 0.02
+
+                    if (mesh.position.distanceTo(agent.targetPosition) < 0.08) {
+                        mesh.position.copy(agent.targetPosition)
+                        agent.isMoving = false
+                        mesh.rotation.y = 0
                     }
                 } else {
-                    const aliveImpostors = WORLD.agents.filter(a => a.alive && a.role === 'impostor').length
-                    const aliveCrewmates = WORLD.agents.filter(a => a.alive && a.role === 'crewmate').length
-                    if (aliveImpostors >= aliveCrewmates) {
-                        reason = 'Impostors outnumber crewmates'
-                    } else {
-                        reason = 'Impostors victory'
-                    }
+                    // Idle bob
+                    mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + agent.id) * 0.06
                 }
-                reasonElement.textContent = reason
-
-                // Show role reveal
-                const roleReveal = document.getElementById('role-reveal')
-                if (roleReveal) {
-                    roleReveal.innerHTML = ''
-                    
-                    WORLD.agents.forEach(agent => {
-                        const roleItem = document.createElement('div')
-                        roleItem.className = 'role-item'
-                        roleItem.innerHTML = `
-                            <div class="role-name">${agent.name}</div>
-                            <div class="role-status ${agent.role} ${!agent.alive ? 'dead' : ''}">
-                                ${agent.role === 'impostor' ? 'IMPOSTOR' : 'CREWMATE'} ${!agent.alive ? '(dead)' : '(alive)'}
-                            </div>
-                        `
-                        roleReveal.appendChild(roleItem)
-                    })
-                }
-
-                // Update stats
-                const roundsElement = document.getElementById('stat-rounds')
-                const tasksElement = document.getElementById('stat-tasks')
-                const killsElement = document.getElementById('stat-kills')
-                const ejectionElement = document.getElementById('stat-ejection')
-                
-                if (roundsElement) roundsElement.textContent = rounds
-                if (tasksElement) tasksElement.textContent = `${completedTasks}/${totalTasks}`
-                if (killsElement) killsElement.textContent = totalKills
-                if (ejectionElement) ejectionElement.textContent = correctEjection ? 'Yes' : 'No'
-
-                // Show overlay
-                const overlay = document.getElementById('gameover-overlay')
-                if (overlay) {
-                    overlay.style.display = 'flex'
-                    console.log('[ENDGAME] Overlay displayed successfully')
-                } else {
-                    console.error('[ENDGAME] Overlay element not found')
-                }
-            } catch (error) {
-                console.error('[ENDGAME] Error in endGame:', error)
             }
         }
 
-        function playAgain() {
-  // 1. Stop the tick loop FIRST
-  clearInterval(tickTimer)
-  tickTimer = null
+        // ✅ FADE OUT ANIMATION for dying agents
+        Object.values(window.agentMeshes).forEach(mesh => {
+            if (!mesh?.userData?.isDying) return
+            
+            const currentTime = Date.now()
+            const elapsed = currentTime - mesh.userData.fadeStartTime
+            const progress = Math.min(elapsed / mesh.userData.fadeDuration, 1)
+            
+            // Calculate opacity (1 to 0)
+            const opacity = 1 - progress
+            
+            // Apply fade to all mesh materials
+            mesh.traverse(child => {
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            mat.transparent = true
+                            mat.opacity = opacity
+                        })
+                    } else {
+                        child.material.transparent = true
+                        child.material.opacity = opacity
+                    }
+                }
+            })
+            
+            // Hide mesh completely when fade is done
+            if (progress >= 1) {
+                mesh.visible = false
+                mesh.userData.isDying = false
+            }
+        })
 
-  // 2. Remove ALL agent meshes from Three.js scene
-  for (const id of Object.keys(window.agentMeshes || {})) {
-    const mesh = window.agentMeshes[id]
-    if (mesh) {
-      scene.remove(mesh)
-      // Dispose geometry and materials to free memory
-      mesh.traverse(child => {
-        if (child.geometry) child.geometry.dispose()
-        if (child.material) child.material.dispose()
-      })
+        renderer.render(scene, camera)
+        labelRenderer.render(scene, camera)
     }
-  }
-  window.agentMeshes = {}  // clear the reference object
 
-  // 3. Remove body markers from scene
-  for (const id of Object.keys(window.bodyMarkers || {})) {
-    scene.remove(window.bodyMarkers[id])
-  }
-  window.bodyMarkers = {}
+    animate()
 
-  // 4. Reset world state
-  WORLD.agents = []
-  WORLD.gameTick = 0
-  WORLD.phase = 'idle'
-  WORLD.winner = null
-  WORLD.events = []
-  WORLD.pendingMeeting = false
-  WORLD.bodyFound = null
+    // ============================================================
+    // GAME CONTROLS
+    // ============================================================
+    let tickTimer  = null
+    let gameSpeed  = 3
+    let isPaused   = false
 
-  // 5. Reset all room states
-  for (const room of Object.values(WORLD.rooms)) {
-    room.agents = new Set()
-    room.hasBody = false
-    room.bodyOf = null
-  }
+    function getTickInterval() { return Math.round(1000 / gameSpeed) }
 
-  // 6. Reinitialize tasks
-  WORLD.initializeTasks()
-
-  // 7. Clear UI
-  document.getElementById('event-log-container').innerHTML = ''
-  WORLD.updateAgentPanel()
-  WORLD.updateTaskHUD()
-
-  // 8. Hide all overlays
-  hideMeetingOverlay()
-  document.getElementById('gameover-overlay').style.display = 'none'
-
-  // 9. Spawn new agents
-  WORLD.spawnAgents()
-
-  // 10. Update UI with new agents
-  WORLD.updateAgentPanel()
-
-  // 11. Start tick timer
-  tickTimer = setInterval(() => {
-    if (window.WORLD && window.WORLD.phase === 'roaming') {
-      window.WORLD.tick();
+    function startTickLoop() {
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+        tickTimer = setInterval(async () => {
+            if (isPaused) return
+            if (!window.WORLD) return
+            if (window.WORLD.phase === 'roaming') {
+                await window.WORLD.tick()
+            }
+        }, getTickInterval())
     }
-  }, 1000)
 
-  // 12. Start the game
-  WORLD.setPhase('roaming')
+    // START
+    document.getElementById('start-btn').addEventListener('click', () => {
+        if (!window.WORLD) return
+        if (window.WORLD.agents.length === 0) {
+            window.WORLD.spawnAgents()
+        }
+        isPaused = false
+        window.WORLD.setPhase('roaming')
+        startTickLoop()
+        addLog('Simulation started', 'system')
+        document.getElementById('start-btn').disabled = true
+    })
 
-  // 13. Reset buttons
-  document.getElementById('start-btn').disabled = true
-  document.getElementById('pause-btn').disabled = false
+    // PAUSE
+    document.getElementById('pause-btn').addEventListener('click', () => {
+        isPaused = !isPaused
+        addLog(isPaused ? 'Paused' : 'Resumed', 'system')
+        document.getElementById('pause-btn').textContent = isPaused ? '▶ RESUME' : '⏸ PAUSE'
+    })
 
-  WORLD.logEvent('system', 'New game started! Agents are ready.')
-  console.log('=== PLAY AGAIN COMPLETE ===')
-  console.log('Scene children after reset:', scene.children.length)
-  console.log('agentMeshes after reset:', Object.keys(window.agentMeshes).length)
-}
+    // RESET
+    document.getElementById('reset-btn').addEventListener('click', () => {
+        resetGame()
+    })
 
-function resetGame() {
-  // 1. Stop the tick loop FIRST
-  clearInterval(tickTimer)
-  tickTimer = null
+    // SPEED
+    document.getElementById('speed-dots').addEventListener('click', e => {
+        if (!e.target.classList.contains('speed-dot')) return
+        document.querySelectorAll('.speed-dot').forEach(d => d.classList.remove('active'))
+        e.target.classList.add('active')
+        gameSpeed = parseInt(e.target.dataset.speed)
+        if (tickTimer) startTickLoop()
+        addLog(`Speed: ${gameSpeed}x`, 'system')
+    })
 
-  // 2. Remove ALL agent meshes from Three.js scene
-  for (const id of Object.keys(window.agentMeshes || {})) {
-    const mesh = window.agentMeshes[id]
-    if (mesh) {
-      scene.remove(mesh)
-      // Dispose geometry and materials to free memory
-      mesh.traverse(child => {
-        if (child.geometry) child.geometry.dispose()
-        if (child.material) child.material.dispose()
-      })
+    // CAMERA
+    document.getElementById('camera-toggle').addEventListener('click', () => {
+        controls.autoRotate = !controls.autoRotate
+        document.getElementById('camera-toggle').textContent = controls.autoRotate ? 'CAM: AUTO' : 'CAM: ORBIT'
+    })
+
+    // ============================================================
+    // END GAME
+    // ============================================================
+    function endGame(winner) {
+        if (!winner) return
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+        window.WORLD.setPhase('gameover')
+
+        const isCrewWin = winner === 'crewmates'
+        const titleEl   = document.getElementById('gameover-title')
+        const reasonEl  = document.getElementById('gameover-reason')
+
+        titleEl.textContent = isCrewWin ? 'CREWMATES WIN' : 'IMPOSTORS WIN'
+        titleEl.className   = 'gameover-title ' + (isCrewWin ? 'crewmate-win' : 'impostor-win')
+
+        const done  = WORLD.getCompletedTasks()
+        const total = WORLD.getTotalTasks()
+        const kills = WORLD.allAgents.filter(a => !a.alive && a.role === 'crewmate').length
+
+        if (isCrewWin) {
+            reasonEl.textContent = done >= total ? 'All tasks completed' : 'All impostors eliminated'
+        } else {
+            reasonEl.textContent = 'Impostors outnumber crewmates'
+        }
+
+        // Role reveal — use allAgents so all 6 always appear
+        const revealEl = document.getElementById('role-reveal')
+        revealEl.innerHTML = ''
+        WORLD.allAgents.forEach(agent => {
+            const item = document.createElement('div')
+            item.className = 'role-item'
+            const isImp = agent.role === 'impostor'
+            item.innerHTML = `
+                <div class="role-item-name">${agent.name}</div>
+                <span class="role-item-badge ${agent.role}">${isImp ? '🔴 IMPOSTOR' : '🟢 CREWMATE'}</span>
+                <div class="role-item-status">${agent.alive ? 'alive' : 'dead'}</div>
+            `
+            revealEl.appendChild(item)
+        })
+
+        const ejectedImpostor = WORLD.allAgents.some(a => !a.alive && a.role === 'impostor')
+
+        document.getElementById('stat-rounds').textContent   = Math.floor(WORLD.gameTick / 10)
+        document.getElementById('stat-tasks').textContent    = `${done}/${total}`
+        document.getElementById('stat-kills').textContent    = kills
+        document.getElementById('stat-ejection').textContent = ejectedImpostor ? 'Yes' : 'No'
+
+        document.getElementById('gameover-overlay').style.display = 'flex'
+        document.getElementById('start-btn').disabled = false
     }
-  }
-  window.agentMeshes = {}  // clear the reference object
 
-  // 3. Remove body markers from scene
-  for (const id of Object.keys(window.bodyMarkers || {})) {
-    scene.remove(window.bodyMarkers[id])
-  }
-  window.bodyMarkers = {}
+    // ============================================================
+    // RESET / PLAY AGAIN
+    // ============================================================
+    function cleanupAgents() {
+        // Remove all agent meshes
+        Object.values(window.agentMeshes).forEach(mesh => {
+            if (!mesh) return
+            mesh.traverse(c => {
+                if (c instanceof THREE.CSS2DObject) {
+                    if (c.parent) c.parent.remove(c)
+                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
+                }
+                if (c.geometry) c.geometry.dispose()
+                if (c.material) c.material.dispose()
+            })
+            scene.remove(mesh)
+        })
+        window.agentMeshes = {}
 
-  // 4. Reset world state
-  WORLD.agents = []
-  WORLD.gameTick = 0
-  WORLD.phase = 'idle'
-  WORLD.winner = null
-  WORLD.events = []
-  WORLD.pendingMeeting = false
-  WORLD.bodyFound = null
+        // Remove body markers
+        Object.values(window.bodyMarkers).forEach(m => { if (m) scene.remove(m) })
+        window.bodyMarkers = {}
 
-  // 5. Reset all room states
-  for (const room of Object.values(WORLD.rooms)) {
-    room.agents = new Set()
-    room.hasBody = false
-    room.bodyOf = null
-  }
+        // Remove progress bars
+        Object.keys(window.agentProgressBars).forEach(id => {
+            const bar = window.agentProgressBars[id]
+            if (bar?.obj?.parent) bar.obj.parent.remove(bar.obj)
+            if (bar?.wrap?.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
+        })
+        window.agentProgressBars = {}
+    }
 
-  // 6. Reinitialize tasks
-  WORLD.initializeTasks()
+    function resetGame() {
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+        isPaused = false
 
-  // 7. Clear UI
-  document.getElementById('event-log-container').innerHTML = ''
-  WORLD.updateAgentPanel()
-  WORLD.updateTaskHUD()
+        cleanupAgents()
 
-  // 8. Hide all overlays
-  hideMeetingOverlay()
-  document.getElementById('gameover-overlay').style.display = 'none'
+        window.meetingInProgress = false
 
-  // 9. Reset buttons
-  document.getElementById('start-btn').disabled = false
-  document.getElementById('pause-btn').disabled = true
+        // Reset world state
+        WORLD.agents = []
+        WORLD.allAgents = []
+        WORLD.gameTick = 0
+        WORLD.phase = 'idle'
+        WORLD.winner = null
+        WORLD.events = []
+        WORLD.pendingMeeting = false
+        WORLD.bodyFound = null
+        WORLD.lastKnownDeadCount = 0
 
-  WORLD.logEvent('system', 'Simulation reset. Click START to begin.')
-  console.log('=== GAME RESET COMPLETE ===')
-  console.log('Scene children after reset:', scene.children.length)
-  console.log('agentMeshes after reset:', Object.keys(window.agentMeshes).length)
-}
+        Object.values(WORLD.rooms).forEach(r => {
+            r.agents  = new Set()
+            r.hasBody = false
+            r.bodyOf  = null
+        })
 
-        window.endGame = endGame
-        window.resetGame = resetGame
+        WORLD.initializeTasks()
+
+        document.getElementById('event-log-container').innerHTML = ''
+        document.getElementById('meeting-overlay').style.display  = 'none'
+        document.getElementById('gameover-overlay').style.display = 'none'
+        document.getElementById('pause-btn').textContent = '⏸ PAUSE'
+        document.getElementById('start-btn').disabled = false
+
+        WORLD.updateAgentPanel()
+        WORLD.updateTaskHUD()
+        WORLD.updatePhaseHUD('idle')
+
+        addLog('Game reset — press START', 'system')
+    }
+
+    function playAgain() {
+        resetGame()
+        // Small delay then auto-start
+        setTimeout(() => {
+            window.WORLD.spawnAgents()
+            isPaused = false
+            window.WORLD.setPhase('roaming')
+            startTickLoop()
+            document.getElementById('start-btn').disabled = true
+            addLog('New game started!', 'system')
+        }, 100)
+    }
+
+    window.endGame   = endGame
+    window.resetGame = resetGame
+    window.playAgain = playAgain
+
+    // ============================================================
+    // EXPOSE hideMeetingOverlay for worldstate.js
+    // ============================================================
+    window.hideMeetingOverlay = function() {
+        document.getElementById('meeting-overlay').style.display = 'none'
+    }
     </script>
 </body>
 </html>

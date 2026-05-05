@@ -1,9 +1,12 @@
+// ============================================================
+// LLM CONFIG
+// ============================================================
 const LLM_CONFIG = {
   provider: 'ollama',
   ollamaUrl: 'http://localhost:11434/api/generate',
   model: 'tinyllama',
-  maxTokens: 80,        // shorter = faster + less rambling
-  temperature: 0.4,     // lower = more predictable output
+  maxTokens: 80,
+  temperature: 0.4,
 }
 
 async function callLLM(prompt) {
@@ -15,1814 +18,734 @@ async function callLLM(prompt) {
         model: LLM_CONFIG.model,
         prompt: prompt,
         stream: false,
-        options: {
-          num_predict: LLM_CONFIG.maxTokens,
-          temperature: LLM_CONFIG.temperature,
-          stop: ['\n', '.', '!', '?']  // stop at first sentence
-        }
+        options: { num_predict: LLM_CONFIG.maxTokens, temperature: LLM_CONFIG.temperature, stop: ['\n','.','!','?'] }
       })
     })
     const data = await res.json()
-    console.log('[LLM] tinyllama responded:', data.response)
     return data.response.trim()
   } catch(e) {
-    console.warn('[LLM] Failed, using fallback:', e.message)
+    console.warn('[LLM] Failed:', e.message)
     return null
   }
 }
-
 window.callLLM = callLLM
 window.LLM_CONFIG = LLM_CONFIG
 
+// ============================================================
+// AGENT STATEMENTS
+// ============================================================
 function getAgentStatement(agent, context) {
-  const aliveNames = WORLD.agents
-    .filter(a => a.alive && a.name !== agent.name)
-    .map(a => a.name)
-
+  const aliveNames = WORLD.agents.filter(a => a.alive && a.name !== agent.name).map(a => a.name)
   const topSuspect = agent.getTopSuspect()?.[0]
   const randomName = aliveNames[Math.floor(Math.random() * aliveNames.length)]
-  const memory = agent.memory[0]?.detail || null
-  const deadAgent = context.bodyFound || 'someone'
+  const deadAgent  = context.bodyFound || 'someone'
 
-  // IMPOSTOR — deflect blame
   if (agent.role === 'impostor') {
-    const templates = [
+    const t = [
       `I was doing my tasks the whole time, ${randomName} was acting strange.`,
       `I passed by ${randomName} right before ${deadAgent} was found.`,
       `Something about ${randomName} seems off, they were alone near the body.`,
       `Ask ${randomName} where they were, I saw them sneaking around.`,
     ]
-    const statement = templates[Math.floor(Math.random() * templates.length)]
-    console.log(`[STATEMENT] ${agent.name} (impostor): ${statement}`)
-    return statement
+    return t[Math.floor(Math.random() * t.length)]
   }
-
-  // CREWMATE WITH MEMORY — use what they saw
-  if (memory && topSuspect) {
-    const templates = [
-      `I noticed ${topSuspect} nearby and ${memory}.`,
-      `I ${memory} and I think ${topSuspect} is responsible.`,
-      `Based on what I saw, ${topSuspect} cannot be trusted.`,
-    ]
-    const statement = templates[Math.floor(Math.random() * templates.length)]
-    console.log(`[STATEMENT] ${agent.name} (crewmate+memory): ${statement}`)
-    return statement
-  }
-
-  // CREWMATE WITH SUSPECT — no strong memory
   if (topSuspect) {
-    const templates = [
+    const memory = agent.memory[0]?.detail || null
+    if (memory) {
+      const t = [
+        `I noticed ${topSuspect} nearby and ${memory}.`,
+        `I ${memory} and I think ${topSuspect} is responsible.`,
+        `Based on what I saw, ${topSuspect} cannot be trusted.`,
+      ]
+      return t[Math.floor(Math.random() * t.length)]
+    }
+    const t = [
       `I think ${topSuspect} is suspicious, they were not doing tasks.`,
       `${topSuspect} was alone when I passed through, watch them carefully.`,
       `I do not fully trust ${topSuspect}, something feels wrong.`,
     ]
-    const statement = templates[Math.floor(Math.random() * templates.length)]
-    console.log(`[STATEMENT] ${agent.name} (crewmate+suspect): ${statement}`)
-    return statement
+    return t[Math.floor(Math.random() * t.length)]
   }
-
-  // CREWMATE WITH NO INFO — generic
-  const templates = [
+  const t = [
     `I was just doing my tasks, I did not see anything suspicious.`,
     `I have no information yet, we should hear from everyone first.`,
     `I cannot say for sure, but we need to be careful voting wrong.`,
   ]
-  const statement = templates[Math.floor(Math.random() * templates.length)]
-  console.log(`[STATEMENT] ${agent.name} (crewmate+noinfo): ${statement}`)
-  return statement
+  return t[Math.floor(Math.random() * t.length)]
 }
-
 window.getAgentStatement = getAgentStatement
 
+// ============================================================
+// VOTING
+// ============================================================
 function getAgentVote(agent, context) {
-  const validAgents = context.aliveAgents
-    .filter(a => a.name !== agent.name)
-
-  if (validAgents.length === 0) return { 
-    vote: null, reason: 'nobody to vote' 
-  }
-
-  // IMPOSTOR — vote out biggest threat
-  // (whoever suspects impostor most)
+  const validAgents = context.aliveAgents.filter(a => a.name !== agent.name)
+  if (validAgents.length === 0) return { vote: null, reason: 'nobody to vote' }
   if (agent.role === 'impostor') {
-    const biggestThreat = validAgents
-      .filter(a => a.role === 'crewmate')
-      .sort((a, b) => 
-        (b.suspicions[agent.name] || 0) - 
-        (a.suspicions[agent.name] || 0)
-      )[0]
-
-    const vote = biggestThreat || validAgents[0]
-    console.log(`[VOTE] ${agent.name} (impostor) → ${vote.name}: eliminating threat`)
-    return {
-      vote: vote.name,
-      reason: 'they seem most suspicious to me'
-    }
+    const threat = validAgents.filter(a => a.role === 'crewmate')
+      .sort((a, b) => (b.suspicions[agent.name]||0) - (a.suspicions[agent.name]||0))[0]
+    const vote = threat || validAgents[0]
+    return { vote: vote.name, reason: 'they seem most suspicious to me' }
   }
-
-  // CREWMATE — vote by highest suspicion score
-  const sorted = [...validAgents].sort((a, b) =>
-    (agent.suspicions[b.name] || 0) - 
-    (agent.suspicions[a.name] || 0)
-  )
-
-  const topSuspect = sorted[0]
-  const score = agent.suspicions[topSuspect.name] || 0
-
-  console.log(`[VOTE] ${agent.name} → ${topSuspect.name} (score: ${score.toFixed(1)})`)
-  return {
-    vote: topSuspect.name,
-    reason: score > 5 ? 'strong evidence from observations' 
-          : score > 2 ? 'suspicious behavior noticed'
-          : 'gut feeling'
-  }
+  const sorted = [...validAgents].sort((a,b) => (agent.suspicions[b.name]||0) - (agent.suspicions[a.name]||0))
+  const top    = sorted[0]
+  const score  = agent.suspicions[top.name] || 0
+  return { vote: top.name, reason: score>5?'strong evidence':score>2?'suspicious behavior':'gut feeling' }
 }
-
-// Update runMeetingVotes to be sync now:
 function runMeetingVotes(aliveAgents, context) {
-  const votes = aliveAgents.map(agent => ({
-    voter: agent.name,
-    ...getAgentVote(agent, context)
-  }))
-  console.log('[MEETING] All votes:', votes)
-  return votes
+  return aliveAgents.map(agent => ({ voter: agent.name, ...getAgentVote(agent, context) }))
 }
-
-window.getAgentVote = getAgentVote
+window.getAgentVote    = getAgentVote
 window.runMeetingVotes = runMeetingVotes
 
-// Meeting sequence functions
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
-async function runMeetingStatements(aliveAgents, context) {
-  const statements = aliveAgents.map(agent => ({
-    name: agent.name,
-    statement: getAgentStatement(agent, context)
-  }))
-  return statements
-}
+// ============================================================
+// MEETING SYSTEM
+// ============================================================
+window.meetingInProgress = false
 
 async function displayStatement(statement) {
-  const statementsContainer = document.getElementById('meeting-statements');
-  const statementElement = document.createElement('div');
-  statementElement.className = 'statement';
-  statementElement.innerHTML = `<span class="speaker">${statement.name}:</span> "${statement.statement}"`;
-  statementElement.style.animationDelay = '0s';
-  statementsContainer.appendChild(statementElement);
+  const container = document.getElementById('meeting-statements')
+  if (!container) return
+  const el = document.createElement('div')
+  el.className = 'statement'
+  el.innerHTML = `<span class="speaker">${statement.name}:</span> "${statement.statement}"`
+  container.appendChild(el)
+  container.scrollTop = container.scrollHeight
 }
 
 async function displayVoteTally(tally) {
-  const voteTally = document.getElementById('vote-tally');
-  const maxVotes = Math.max(...Object.values(tally));
-  
+  const voteTallyEl = document.getElementById('vote-tally')
+  if (!voteTallyEl) return null
+  const maxVotes = Math.max(...Object.values(tally), 1)
   Object.entries(tally).forEach(([name, count]) => {
-    const voteItem = document.createElement('div');
-    voteItem.className = 'vote-item';
-    voteItem.innerHTML = `
+    const item = document.createElement('div')
+    item.className = 'vote-item'
+    item.innerHTML = `
       <div class="vote-name">${name}</div>
-      <div class="vote-bar-container">
-        <div class="vote-bar" style="width: ${(count / maxVotes) * 100}%"></div>
-      </div>
-      <div class="vote-count">${count} vote${count !== 1 ? 's' : ''}</div>
-    `;
-    voteTally.appendChild(voteItem);
-  });
+      <div class="vote-bar-container"><div class="vote-bar" style="width:${(count/maxVotes)*100}%"></div></div>
+      <div class="vote-count">${count} vote${count!==1?'s':''}</div>`
+    voteTallyEl.appendChild(item)
+  })
+  await sleep(2500)
+  const sorted = Object.entries(tally).sort((a,b) => b[1]-a[1])
+  const isTie  = sorted.length > 1 && sorted[0][1] === sorted[1][1]
+  if (isTie || sorted.length === 0) {
+    const el = document.createElement('div')
+    el.className = 'vote-role-reveal'
+    el.innerHTML = `<div class="role-reveal-title">NO EJECTION</div><div class="role-reveal-subtitle">Votes tied — nobody ejected</div>`
+    voteTallyEl.appendChild(el)
+    await sleep(2000)
+    return null
+  }
+  const [topName] = sorted[0]
+  const agent = WORLD.allAgents.find(a => a.name === topName)
+  if (agent) {
+    const el = document.createElement('div')
+    el.className = 'vote-role-reveal'
+    el.innerHTML = `
+      <div class="role-reveal-title">EJECTED</div>
+      <div class="role-reveal-name">${agent.name}</div>
+      <div class="role-reveal-role ${agent.role}">${agent.role==='impostor'?'🔴 IMPOSTOR':'🟢 CREWMATE'}</div>
+      <div class="role-reveal-subtitle">${agent.role==='impostor'?'The Impostor was ejected!':'An innocent Crewmate was ejected.'}</div>`
+    voteTallyEl.appendChild(el)
+    await sleep(2500)
+  }
+  return topName
 }
 
 function ejectAgent(agentName) {
-  return new Promise(resolve => {
-    const agent = WORLD.agents.find(a => a.name === agentName)
-    if (!agent) {
-      resolve();
-      return;
-    }
-
-    const wasImpostor = agent.role === 'impostor'
-    
-    // Update game state
-    agent.alive = false
-    WORLD.getRoom(agent.currentRoom).agents.delete(agent.id)
-    
-    // Spawn body marker
-    if (window.spawnBodyMarker) {
-      window.spawnBodyMarker(agent, agent.currentRoom);
-    }
-    
-    // Remove agent from world agents array to prevent duplicates on reset
-    const agentIndex = WORLD.agents.findIndex(a => a.id === agent.id)
-    if (agentIndex > -1) {
-      WORLD.agents.splice(agentIndex, 1)
-    }
-
-    // Show result in UI
-    const resultContainer = document.getElementById('meeting-result');
-    const ejectedPlayerElement = document.getElementById('ejected-player');
-    const ejectedVerdictElement = document.getElementById('ejected-verdict');
-    
-    ejectedPlayerElement.textContent = `💀 ${agentName} was ejected.`;
-    ejectedVerdictElement.textContent = wasImpostor 
-      ? '✓ They WERE the impostor.' 
-      : '✗ They were NOT the impostor.';
-
-    resultContainer.className = 'meeting-result ' + (wasImpostor ? 'ejected-impostor' : 'ejected-innocent');
-    resultContainer.style.display = 'block';
-
-    // Get Three.js mesh for animation
-    const mesh = window.agentMeshes?.[agent.id]
-    if (!mesh) {
-      // Fallback if no mesh found
-      WORLD.logEvent('eject', `${agentName} ejected — ${wasImpostor ? 'WAS impostor ✓' : 'was NOT impostor ✗'}`)
-      document.dispatchEvent(new CustomEvent('agentDied', {
-        detail: { agent, killer: null, room: 'meeting' }
-      }))
-      resolve()
-      return
-    }
-    
-    // Animation: float up + fade out + spin
-    const startY = mesh.position.y
-    const startTime = Date.now()
-    const duration = 2000
-    
-    function animateEject() {
-      const elapsed = Date.now() - startTime
-      const t = Math.min(elapsed / duration, 1)
-      
-      mesh.position.y = startY + t * 8          // float upward
-      mesh.rotation.y += 0.1                    // spin
-      mesh.children.forEach(c => {
-        if (c.material) c.material.opacity = 1 - t
-      })
-      
-      if (t < 1) {
-        requestAnimationFrame(animateEject)
-      } else {
-        // Remove from scene
-        window.scene?.remove(mesh)
-        window.agentMeshes[agent.id] = undefined
-        
-        // Log event and dispatch
-        WORLD.logEvent(
-          wasImpostor ? 'vote' : 'kill',
-          `${agentName} ejected — ${wasImpostor ? 'WAS impostor ' : 'was NOT impostor '}` 
-        )
-        document.dispatchEvent(new CustomEvent('agentDied', {
-          detail: { agent, killer: null, room: 'meeting' }
-        }))
-        resolve()
-      }
-    }
-    animateEject()
-  })
-}
-
-async function showMeetingOverlay(context) {
-  const overlay = document.getElementById('meeting-overlay');
-  const reasonElement = document.getElementById('meeting-reason');
-  const statementsContainer = document.getElementById('meeting-statements');
-  const voteTally = document.getElementById('vote-tally');
-  const resultContainer = document.getElementById('meeting-result');
-
-  // Clear previous content
-  statementsContainer.innerHTML = '';
-  voteTally.innerHTML = '';
-  resultContainer.style.display = 'none';
-
-  // Set meeting reason
-  reasonElement.textContent = `Body found: ${context.bodyFound || 'Someone'}`;
-
-  // Show overlay
-  overlay.style.display = 'flex';
-}
-
-function hideMeetingOverlay() {
-  const overlay = document.getElementById('meeting-overlay');
-  overlay.style.display = 'none';
+  const agent = WORLD.agents.find(a => a.name === agentName)
+  if (!agent) return
+  const wasImpostor = agent.role === 'impostor'
+  agent.alive = false
+  const room = WORLD.getRoom(agent.currentRoom)
+  if (room) room.agents.delete(agent.id)
+  if (window.handleAgentDeath) window.handleAgentDeath(agent)
+  const rc = document.getElementById('meeting-result')
+  const ep = document.getElementById('ejected-player')
+  const ev = document.getElementById('ejected-verdict')
+  if (rc && ep && ev) {
+    ep.textContent = `💀 ${agentName} was ejected.`
+    ev.textContent = wasImpostor ? '✓ They WERE the impostor.' : '✗ They were NOT the impostor.'
+    rc.className   = 'meeting-result ' + (wasImpostor ? 'ejected-impostor' : 'ejected-innocent')
+    rc.style.display = 'block'
+  }
+  WORLD.logEvent('vote', `${agentName} ejected — ${wasImpostor?'WAS impostor ✓':'was NOT impostor ✗'}`)
+  document.dispatchEvent(new CustomEvent('agentDied', { detail: { agent, killer: null, room: 'meeting' } }))
 }
 
 async function triggerMeeting() {
-  WORLD.setPhase('meeting')
+  if (window.meetingInProgress) return
+  if (WORLD.phase === 'gameover') return
+  window.meetingInProgress = true
   WORLD.pendingMeeting = false
-  
-  const aliveAgents = WORLD.agents.filter(a => a.alive)
-  const context = {
-    aliveAgents,
-    bodyFound: WORLD.bodyFound,
-    tick: WORLD.gameTick
-  }
+  WORLD.setPhase('meeting')
+  try {
+    const aliveAgents = WORLD.agents.filter(a => a.alive)
+    const context     = { aliveAgents, bodyFound: WORLD.bodyFound, tick: WORLD.gameTick }
+    const overlay     = document.getElementById('meeting-overlay')
+    const reasonEl    = document.getElementById('meeting-reason')
+    const stmtsEl     = document.getElementById('meeting-statements')
+    const tallyEl     = document.getElementById('vote-tally')
+    const resultEl    = document.getElementById('meeting-result')
+    if (stmtsEl)  stmtsEl.innerHTML = ''
+    if (tallyEl)  tallyEl.innerHTML = ''
+    if (resultEl) resultEl.style.display = 'none'
+    if (reasonEl) reasonEl.textContent = `Body found: ${WORLD.bodyFound || 'Unknown'}`
+    if (overlay)  overlay.style.display = 'flex'
 
-  showMeetingOverlay(context)
-  
-  // 1. Get all statements in parallel
-  WORLD.setPhase('discussion')
-  const statements = await runMeetingStatements(aliveAgents, context)
-  
-  // 2. Display statements one by one
-  for (const s of statements) {
-    await displayStatement(s)
-    WORLD.logEvent('meeting', `${s.name}: "${s.statement.slice(0,50)}..."`)
-    await sleep(400)
-  }
-
-  // 3. Get all votes in parallel  
-  WORLD.setPhase('voting')
-  const votes = await runMeetingVotes(aliveAgents, context)
-  
-  // 4. Tally and display votes
-  const tally = {}
-  for (const v of votes) {
-    tally[v.vote] = (tally[v.vote] || 0) + 1
-    WORLD.logEvent('vote', `${v.voter} → ${v.vote} (${v.reason})`)
-  }
-  await displayVoteTally(tally)
-
-  // 5. Eject highest voted
-  const ejected = Object.entries(tally).sort((a,b)=>b[1]-a[1])[0]
-  if (ejected) await ejectAgent(ejected[0])
-  
-  // 6. Check win then resume
-  await sleep(3000)
-  hideMeetingOverlay()
-  WORLD.bodyFound = null
-  
-  const winner = WORLD.checkWinCondition()
-  if (winner) { return }
-  
-  WORLD.setPhase('roaming')
-}
-
-window.triggerMeeting = triggerMeeting
-window.showMeetingOverlay = showMeetingOverlay
-window.hideMeetingOverlay = hideMeetingOverlay
-
-function getFallbackStatement(agent) {
-  const fallbacks = {
-    NOVA: "I have a bad feeling about someone here.",
-    AXEL: "We need more evidence before voting.",
-    ZIRA: "Everyone should stay calm and work together.",
-    KAGE: "I was working alone the whole time.",
-    PULSE: "I didn't see anything unusual.",
-    VERA: "Someone here is lying and I'll find them!"
-  }
-  return fallbacks[agent.name] || "I'm not sure what to think."
-}
-
-// AGENT ROSTER - Available agents for spawning
-const AGENT_ROSTER = [
-  { name: 'NOVA',  color: '#ef5350' },
-  { name: 'AXEL',  color: '#42a5f5' },
-  { name: 'ZIRA',  color: '#66bb6a' },
-  { name: 'KAGE',  color: '#ffca28' },
-  { name: 'PULSE', color: '#ab47bc' },
-  { name: 'VERA',  color: '#26c6da' },
-];
-
-const PERSONALITIES = {
-  NOVA:  {
-    type: 'paranoid',
-    trait: 'suspects everyone, jumps to conclusions',
-    voteStyle: 'votes first based on gut feeling'
-  },
-  AXEL:  {
-    type: 'analytical',
-    trait: 'logical, needs evidence before accusing',
-    voteStyle: 'only votes with strong proof'
-  },
-  ZIRA:  {
-    type: 'social',
-    trait: 'builds alliances, emotional reasoning',
-    voteStyle: 'votes with majority to avoid conflict'
-  },
-  KAGE:  {
-    type: 'deceptive',
-    trait: 'calm, calculated, deflects blame',
-    voteStyle: 'frames innocent agents strategically'
-  },
-  PULSE: {
-    type: 'passive',
-    trait: 'quiet, avoids conflict, rarely accuses',
-    voteStyle: 'follows crowd or skips'
-  },
-  VERA:  {
-    type: 'aggressive',
-    trait: 'confrontational, pushes hard on suspects',
-    voteStyle: 'campaigns loudly for their suspect'
-  },
-}
-
-// TASK SYSTEM - Individual task management
-class Task {
-  constructor(id, roomId, name, ticksToComplete) {
-    this.id = id
-    this.roomId = roomId
-    this.name = name
-    this.ticksToComplete = ticksToComplete  // how many ticks agent must stay
-    this.ticksSpent = 0
-    this.completedBy = null   // agentId
-    this.isComplete = false
-  }
-
-  workOn(agentId, ticks = 1) {
-    if (this.isComplete) return false;
-    
-    this.ticksSpent += ticks;
-    
-    if (this.ticksSpent >= this.ticksToComplete) {
-      this.isComplete = true;
-      this.completedBy = agentId;
-      return true; // Task completed
+    WORLD.setPhase('discussion')
+    const statements = aliveAgents.map(agent => ({ name: agent.name, statement: getAgentStatement(agent, context) }))
+    for (const s of statements) {
+      await displayStatement(s)
+      WORLD.logEvent('meeting', `${s.name}: "${s.statement.slice(0,50)}..."`)
+      await sleep(500)
     }
-    
-    return false; // Task not yet completed
-  }
+    await sleep(600)
 
-  getProgress() {
-    return Math.min(this.ticksSpent / this.ticksToComplete, 1);
+    WORLD.setPhase('voting')
+    const votes = runMeetingVotes(aliveAgents, context)
+    const tally = {}
+    for (const v of votes) {
+      if (v.vote) tally[v.vote] = (tally[v.vote] || 0) + 1
+      WORLD.logEvent('vote', `${v.voter} → ${v.vote} (${v.reason})`)
+    }
+    const ejectedName = await displayVoteTally(tally)
+    if (ejectedName) { ejectAgent(ejectedName); await sleep(1500) }
+
+    const winner = WORLD.checkWinCondition()
+    if (winner) {
+      if (overlay) overlay.style.display = 'none'
+      window.meetingInProgress = false
+      if (window.endGame) endGame(winner)
+      return
+    }
+
+    await sleep(1800)
+    if (overlay) overlay.style.display = 'none'
+
+    WORLD.pendingMeeting = false
+    WORLD.bodyFound = null
+    // ✅ KEY FIX: update lastKnownDeadCount AFTER meeting ends, not before
+    WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
+
+    for (const room of Object.values(WORLD.rooms)) { room.hasBody = false; room.bodyOf = null }
+    for (const id of Object.keys(window.bodyMarkers || {})) {
+      if (window.scene) window.scene.remove(window.bodyMarkers[id])
+    }
+    window.bodyMarkers = {}
+    WORLD.setPhase('roaming')
+
+  } catch(err) {
+    console.error('[MEETING] Error:', err)
+    const overlay = document.getElementById('meeting-overlay')
+    if (overlay) overlay.style.display = 'none'
+    WORLD.pendingMeeting = false
+    WORLD.bodyFound = null
+    WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
+    if (WORLD.phase !== 'gameover') WORLD.setPhase('roaming')
+  } finally {
+    window.meetingInProgress = false
   }
 }
+window.triggerMeeting = triggerMeeting
 
-// AGENT STATE - Individual AI agent management
+// ============================================================
+// AGENT ROSTER & PERSONALITIES
+// ============================================================
+const AGENT_ROSTER = [
+  { name:'NOVA',  color:'#ef5350' },
+  { name:'AXEL',  color:'#42a5f5' },
+  { name:'ZIRA',  color:'#66bb6a' },
+  { name:'KAGE',  color:'#ffca28' },
+  { name:'PULSE', color:'#ab47bc' },
+  { name:'VERA',  color:'#26c6da' },
+]
+const PERSONALITIES = {
+  NOVA: { type:'paranoid',   trait:'suspects everyone',   voteStyle:'votes on gut feeling' },
+  AXEL: { type:'analytical', trait:'needs evidence',      voteStyle:'only votes with proof' },
+  ZIRA: { type:'social',     trait:'emotional reasoning', voteStyle:'votes with majority' },
+  KAGE: { type:'deceptive',  trait:'calm, deflects',      voteStyle:'frames innocent agents' },
+  PULSE:{ type:'passive',    trait:'avoids conflict',     voteStyle:'follows crowd' },
+  VERA: { type:'aggressive', trait:'confrontational',     voteStyle:'campaigns loudly' },
+}
+
+// ============================================================
+// TASK CLASS
+// ============================================================
+class Task {
+  constructor(id, roomId, name, secondsToComplete) {
+    this.id = id; this.roomId = roomId; this.name = name
+    this.secondsToComplete = secondsToComplete
+    this.secondsSpent = 0; this.completedBy = null; this.isComplete = false
+  }
+  workOn(agentId, seconds = 1) {
+    if (this.isComplete) return false
+    this.secondsSpent += seconds
+    if (this.secondsSpent >= this.secondsToComplete) {
+      this.isComplete = true; this.completedBy = agentId; return true
+    }
+    return false
+  }
+  getProgress() { return Math.min(this.secondsSpent / this.secondsToComplete, 1) }
+}
+
+// ============================================================
+// AGENT STATE CLASS
+// ============================================================
 class AgentState {
   constructor(id, name, color, role, startRoomId) {
-    this.id = id
-    this.name = name
-    this.color = color
-    this.role = role              // 'crewmate' | 'impostor'
-    this.alive = true
-    this.currentRoom = startRoomId
-    this.previousRoom = null
-    this.path = []                // planned path (array of roomIds)
-    this.currentTask = null       // Task object they're working on
-    this.assignedTasks = []       // Task IDs assigned to this agent
-    this.completedTasks = []
-    this.memory = []              // last N observations (capped at MEMORY_SIZE)
-    this.suspicions = {}          // { agentName: suspicionScore }
-    this.killCooldown = 0
-    this.personality = null       // set in Phase 3
-    this.state = 'idle'           // idle | moving | working | hunting | fleeing
-    this.targetPosition = null   // THREE.Vector3
-    this.isMoving = false
+    this.id=id; this.name=name; this.color=color; this.role=role
+    this.alive=true; this.currentRoom=startRoomId; this.previousRoom=null
+    this.path=[]; this.currentTask=null; this.assignedTasks=[]; this.completedTasks=[]
+    this.memory=[]; this.suspicions={}; this.deathTick=null
+    this.killCooldown=0; this.isBusy=false; this.taskProgress=0; this.idleUntil=0
+    this.personality=null; this.state='idle'; this.targetPosition=null
+    this.isMoving=false; this.label=null; this.mesh=null; this.avgSuspicion=0
   }
-
-  addMemory(observation) {
-    this.memory.unshift(observation)
-    if (this.memory.length > (window.GAME_CONFIG ? window.GAME_CONFIG.MEMORY_SIZE : 10)) {
-      this.memory.pop()
-    }
-  }
-
-  raiseSuspicion(agentName, amount) {
-    this.suspicions[agentName] = (this.suspicions[agentName] || 0) + amount
-  }
-
-  getTopSuspect() {
-    return Object.entries(this.suspicions).sort((a,b) => b[1]-a[1])[0] || null
-  }
-
-  // Helper methods for agent state management
-  moveToRoom(roomId) {
-    this.previousRoom = this.currentRoom
-    this.currentRoom = roomId
-    this.path = []
-  }
-
-  setPath(path) {
-    this.path = path
-  }
-
-  assignTask(task) {
-    this.assignedTasks.push(task.id)
-    this.currentTask = task
-  }
-
-  completeTask(task) {
-    const index = this.assignedTasks.indexOf(task.id)
-    if (index > -1) {
-      this.assignedTasks.splice(index, 1)
-    }
-    this.completedTasks.push(task.id)
-    if (this.currentTask && this.currentTask.id === task.id) {
-      this.currentTask = null
-    }
-  }
-
-  setState(newState) {
-    this.state = newState
-  }
-
-  isImpostor() {
-    return this.role === 'impostor'
-  }
-
-  canKill() {
-    return this.isImpostor() && this.alive && this.killCooldown === 0
-  }
-
-  setKillCooldown(ticks) {
-    this.killCooldown = ticks
-  }
-
-  reduceKillCooldown() {
-    if (this.killCooldown > 0) {
-      this.killCooldown--
-    }
-  }
-
-  getTaskProgress() {
-    if (!this.currentTask) return 0
-    return this.currentTask.getProgress()
-  }
-
-  getCompletedTaskCount() {
-    return this.completedTasks.length
-  }
-
-  getAssignedTaskCount() {
-    return this.assignedTasks.length
-  }
+  addMemory(obs) { this.memory.unshift(obs); if(this.memory.length>10) this.memory.pop() }
+  raiseSuspicion(name, amount) { this.suspicions[name] = (this.suspicions[name]||0) + amount }
+  getTopSuspect() { return Object.entries(this.suspicions).sort((a,b)=>b[1]-a[1])[0] || null }
+  isImpostor() { return this.role === 'impostor' }
+  canKill()    { return this.isImpostor() && this.alive && this.killCooldown <= 0 }
 }
 
-// ROOM STATE - Individual room management
+// ============================================================
+// ROOM STATE CLASS
+// ============================================================
 class RoomState {
   constructor(id, name, connectedTo) {
-    this.id = id
-    this.name = name
-    this.connectedTo = connectedTo   // array of roomIds
-    this.agents = new Set()          // agent IDs currently here
-    this.tasks = []                  // task objects assigned to this room
-    this.hasBody = false             // dead body present?
-    this.bodyOf = null               // which agent died here
-    this.isLightsOut = false         // sabotage state (Phase 6)
+    this.id=id; this.name=name; this.connectedTo=connectedTo
+    this.agents=new Set(); this.tasks=[]; this.hasBody=false; this.bodyOf=null
   }
-
-  addAgent(agentId) {
-    this.agents.add(agentId);
-  }
-
-  removeAgent(agentId) {
-    this.agents.delete(agentId);
-  }
-
-  getAgents() {
-    return Array.from(this.agents);
-  }
-
-  hasAgent(agentId) {
-    return this.agents.has(agentId);
-  }
-
-  addBody(agentId) {
-    this.hasBody = true;
-    this.bodyOf = agentId;
-  }
-
-  clearBody() {
-    this.hasBody = false;
-    this.bodyOf = null;
-  }
-
-  setLightsOut(state) {
-    this.isLightsOut = state;
-  }
+  addAgent(id)    { this.agents.add(id) }
+  removeAgent(id) { this.agents.delete(id) }
+  getAgents()     { return Array.from(this.agents) }
+  hasAgent(id)    { return this.agents.has(id) }
 }
 
-// WORLD STATE - Live Game World Management
+// ============================================================
+// WORLD STATE CLASS
+// ============================================================
 class WorldState {
   constructor() {
-    console.log('=== WORLDSTATE CONSTRUCTOR CALLED ===')
-    this.rooms = {}          // roomId → RoomState
-    this.agents = []         // array of AgentState objects
-    this.gameTick = 0        // current simulation tick counter
-    this.phase = 'idle'      // idle | roaming | meeting | voting | gameover
-    this.winner = null       // null | 'crewmates' | 'impostors'
-    this.events = []         // global event history
-    this.pendingMeeting = false
-    this.bodyFound = null    // which agent's body triggered meeting
-    
-    this.initializeWorld();
-    this.setupEventListeners();
+    this.rooms={}; this.agents=[]; this.allAgents=[]
+    this.gameTick=0; this.phase='idle'; this.winner=null; this.events=[]
+    this.pendingMeeting=false; this.bodyFound=null
+    this.lastKnownDeadCount=0  // starts at 0 — first death (count=1 > 0) always triggers
+    this.initializeWorld()
+    this.setupEventListeners()
   }
 
   initializeWorld() {
-    // Initialize all 7 rooms using ROOMS config
-    const ROOMS = {
-      cafeteria:  { x:  0,  z: -4, size: 'large'  },
-      reactor:    { x: -8,  z:  0, size: 'medium' },
-      medbay:     { x: -5,  z:  3, size: 'small'  },
-      security:   { x: -2,  z:  1, size: 'small'  },
-      electrical: { x:  0,  z:  5, size: 'medium' },
-      storage:    { x:  4,  z:  4, size: 'medium' },
-      admin:      { x:  6,  z: -1, size: 'large'  }
-    };
-
-    // Room connections matching the connection graph from Phase 1
-    const roomConnections = {
-      cafeteria: ['reactor', 'security', 'admin'],
-      reactor: ['cafeteria', 'medbay'],
-      medbay: ['reactor', 'security'],
-      security: ['cafeteria', 'medbay', 'electrical'],
-      electrical: ['security', 'storage'],
-      storage: ['electrical', 'admin'],
-      admin: ['cafeteria', 'storage']
-    };
-
-    // Initialize RoomState objects
-    Object.keys(ROOMS).forEach(roomId => {
-      const roomName = roomId.charAt(0).toUpperCase() + roomId.slice(1);
-      const connectedTo = roomConnections[roomId] || [];
-      this.rooms[roomId] = new RoomState(roomId, roomName, connectedTo);
-    });
-
-    // Log all room names and connections to console for verification
-    console.log('=== ROOM INITIALIZATION ===');
-    Object.keys(this.rooms).forEach(roomId => {
-      const room = this.rooms[roomId];
-      console.log(`${room.name} (${room.id}) -> connected to: [${room.connectedTo.join(', ')}]`);
-    });
-    console.log('=== END ROOM INITIALIZATION ===');
-    
-    // Initialize task system
-    this.initializeTasks();
-    
-    this.logEvent('system', 'World initialized with 7 rooms and tasks');
-    
-    // Agents will be spawned after page loads completely
+    const conn = {
+      cafeteria: ['reactor','security','admin'], reactor: ['cafeteria','medbay'],
+      medbay: ['reactor','security'], security: ['cafeteria','medbay','electrical'],
+      electrical: ['security','storage'], storage: ['electrical','admin'], admin: ['cafeteria','storage']
+    }
+    Object.keys(conn).forEach(id => {
+      const name = id.charAt(0).toUpperCase()+id.slice(1)
+      this.rooms[id] = new RoomState(id, name, conn[id])
+    })
+    this.initializeTasks()
+    this.logEvent('system','World initialized')
   }
 
   spawnAgents() {
-    if (this.agents.length > 0) {
-      console.log('Agents already spawned, clearing first...')
-      this.agents = []
-      this.rooms['cafeteria'].agents = new Set()
+    this.agents=[]; this.allAgents=[]
+    const impostorCount = window.GAME_CONFIG?.IMPOSTOR_COUNT ?? 1
+    const tasksPerAgent = window.GAME_CONFIG?.TASKS_PER_AGENT ?? 5
+    const indices = Array.from({length:AGENT_ROSTER.length},(_,i)=>i)
+    const impostorIndices = []
+    for(let i=0;i<impostorCount;i++) {
+      const ri = Math.floor(Math.random()*indices.length)
+      impostorIndices.push(indices.splice(ri,1)[0])
     }
-    console.log('=== SPAWN AGENTS CALLED ===')
-    console.log('WORLD.agents before spawn:', this.agents.length)
-    
-    const impostorCount = window.GAME_CONFIG ? window.GAME_CONFIG.IMPOSTOR_COUNT : 1;
-    const tasksPerAgent = window.GAME_CONFIG ? window.GAME_CONFIG.TASKS_PER_AGENT : 3;
-    
-    // 1. Pick IMPOSTOR_COUNT random agents to be impostors
-    const agentIndices = Array.from({length: AGENT_ROSTER.length}, (_, i) => i);
-    const impostorIndices = [];
-    
-    // Randomly select impostors
-    for (let i = 0; i < impostorCount; i++) {
-      const randomIndex = Math.floor(Math.random() * agentIndices.length);
-      impostorIndices.push(agentIndices.splice(randomIndex, 1)[0]);
-    }
-    
-    // 2. Create AgentState objects
-    AGENT_ROSTER.forEach((agentData, index) => {
-      const isImpostor = impostorIndices.includes(index);
-      const role = isImpostor ? 'impostor' : 'crewmate';
-      
-      // Create agent with unique ID
-      const agent = new AgentState(
-        index,
-        agentData.name,
-        agentData.color,
-        role,
-        'cafeteria' // All agents start in cafeteria
-      );
-      
-      // Attach personality
-      agent.personality = PERSONALITIES[agent.name];
-      
-      // 3. Assign tasks to crewmates (impostors get fake tasks)
-      if (!isImpostor) {
-        this.assignTasksToAgent(agent, tasksPerAgent);
-      } else {
-        // Impostors get fake tasks for appearance
-        this.assignFakeTasksToAgent(agent, tasksPerAgent);
-      }
-      
-      // 4. Add to WORLD.agents
-      this.agents.push(agent);
-      console.log('Pushed agent, total now:', this.agents.length);
-      
-      // 5. Add to cafeteria room
-      const cafeteria = this.getRoom('cafeteria');
-      if (cafeteria) {
-        cafeteria.addAgent(agent.id);
-      }
-      
-      // 6. Create 3D mesh for agent
-      console.log(`About to spawn mesh for agent ${index}: ${agent.name}`)
-      try {
-        this.spawnAgentMesh(agent);
-        console.log(`spawnAgentMesh completed for ${agent.name}`)
-      } catch (error) {
-        console.error(`Error spawning mesh for ${agent.name}:`, error)
-      }
-    });
-    
-    // 7. Update UI
-    this.updateAgentPanel();
-    this.updateTaskHUD();
-    
-    // 8. Debug logging
-    console.log('=== AGENT SPAWNING ===');
-    this.agents.forEach(agent => {
-      console.log(`${agent.name} (${agent.role.toUpperCase()}) - Tasks: ${agent.assignedTasks.length}`);
-    });
-    console.log(`IMPOSTORS: ${this.agents.filter(a => a.isImpostor()).map(a => a.name).join(', ')}`);
-    console.log('=== END AGENT SPAWNING ===');
-    
-    this.logEvent('system', `Spawned ${this.agents.length} agents (${impostorCount} impostors)`);
-    
-    console.log('=== SPAWN COMPLETE ===')
-    console.log('WORLD.agents after spawn:', this.agents.length)
-    this.agents.forEach(a => console.log(a.name, a.color, a.currentRoom, a.role))
+    AGENT_ROSTER.forEach((data,index) => {
+      const role  = impostorIndices.includes(index) ? 'impostor' : 'crewmate'
+      const agent = new AgentState(index, data.name, data.color, role, 'cafeteria')
+      agent.personality = PERSONALITIES[data.name]
+      if(role==='crewmate') this.assignTasksToAgent(agent, tasksPerAgent)
+      else { this.assignFakeTasksToAgent(agent, tasksPerAgent); agent.killCooldown=15 }
+      this.agents.push(agent)
+      this.rooms['cafeteria'].addAgent(agent.id)
+      if(window.spawnAgentMesh) window.spawnAgentMesh(agent)
+    })
+    this.allAgents = [...this.agents]
+    this.updateAgentPanel(); this.updateTaskHUD()
+    this.logEvent('system',`Spawned ${this.agents.length} agents (${impostorCount} impostor)`)
   }
 
-  assignTasksToAgent(agent, taskCount) {
-    const roomIds = Object.keys(this.rooms);
-    const assignedTasks = [];
-    
-    for (let i = 0; i < taskCount; i++) {
-      // Find a room with available tasks
-      const availableRooms = roomIds.filter(roomId => {
-        const room = this.rooms[roomId];
-        return room.tasks.some(task => !task.isComplete && !assignedTasks.includes(task.id));
-      });
-      
-      if (availableRooms.length === 0) break;
-      
-      const randomRoomId = availableRooms[Math.floor(Math.random() * availableRooms.length)];
-      const room = this.rooms[randomRoomId];
-      
-      // Find an unassigned task in this room
-      const availableTask = room.tasks.find(task => !task.isComplete && !assignedTasks.includes(task.id));
-      
-      if (availableTask) {
-        agent.assignTask(availableTask);
-        assignedTasks.push(availableTask.id);
-      }
+  assignTasksToAgent(agent, count) {
+    const allTasks=[]; Object.values(this.rooms).forEach(r=>allTasks.push(...r.tasks))
+    const available=allTasks.filter(t=>!t.isComplete); const assigned=[]
+    for(let i=0;i<count&&available.length>0;i++) {
+      const ri=Math.floor(Math.random()*available.length)
+      assigned.push(available.splice(ri,1)[0])
+    }
+    agent.assignedTasks=assigned
+  }
+
+  assignFakeTasksToAgent(agent, count) {
+    const names=['Fix Wiring','Start Reactor','Submit Scan','Check Cameras','Reset Breakers']
+    const roomIds=Object.keys(this.rooms)
+    agent.assignedTasks=[]
+    for(let i=0;i<count;i++) {
+      agent.assignedTasks.push({
+        id:`fake_${agent.id}_${i}`, name:names[i%names.length],
+        roomId:roomIds[Math.floor(Math.random()*roomIds.length)],
+        isComplete:false, isFake:true, getProgress:()=>0, workOn:()=>false
+      })
     }
   }
 
-  assignFakeTasksToAgent(agent, taskCount) {
-    // Impostors get fake tasks that don't actually exist in the world
-    // This makes them appear to have tasks like crewmates
-    const fakeTaskNames = ['Fix Wiring', 'Start Reactor', 'Submit Scan', 'Check Cameras', 'Reset Breakers', 'Fuel Engines', 'Swipe Card'];
-    
-    for (let i = 0; i < taskCount; i++) {
-      const fakeTask = {
-        id: `fake_${agent.id}_${i}`,
-        name: fakeTaskNames[Math.floor(Math.random() * fakeTaskNames.length)],
-        roomId: 'cafeteria',
-        isComplete: false,
-        getProgress: () => 0
-      };
-      
-      agent.assignTask(fakeTask);
-    }
-  }
-
-  spawnAgentMesh(agent) {
-    console.log(`WorldState.spawnAgentMesh called for ${agent.name}`);
-    // Call the global 3D mesh creation function
-    if (window.spawnAgentMesh && typeof window.spawnAgentMesh === 'function') {
-      console.log(`Calling window.spawnAgentMesh for ${agent.name}`);
-      window.spawnAgentMesh(agent);
-    } else {
-      console.log(`Would create 3D mesh for ${agent.name} at cafeteria position`);
-    }
-  }
-
-  // Find shortest path between rooms using BFS
-  findPath(fromRoomId, toRoomId) {
-    if (fromRoomId === toRoomId) return [fromRoomId];
-    
-    const queue = [[fromRoomId]];
-    const visited = new Set([fromRoomId]);
-    
-    while (queue.length > 0) {
-      const path = queue.shift();
-      const currentRoom = path[path.length - 1];
-      
-      // Get connected rooms
-      const currentRoomState = this.rooms[currentRoom];
-      if (!currentRoomState) continue;
-      
-      for (const connectedRoomId of currentRoomState.connectedTo) {
-        if (connectedRoomId === toRoomId) {
-          return [...path, connectedRoomId];
-        }
-        
-        if (!visited.has(connectedRoomId)) {
-          visited.add(connectedRoomId);
-          queue.push([...path, connectedRoomId]);
-        }
+  findPath(fromId, toId) {
+    if(fromId===toId) return [fromId]
+    const visited=new Set([fromId]), queue=[{room:fromId,path:[fromId]}]
+    while(queue.length>0) {
+      const {room,path}=queue.shift()
+      for(const next of (this.rooms[room]?.connectedTo||[])) {
+        if(next===toId) return [...path,next]
+        if(!visited.has(next)) { visited.add(next); queue.push({room:next,path:[...path,next]}) }
       }
     }
-    
-    // No path found
-    return [];
+    return []
   }
 
-  // Decide destination for agent based on role
   decideDestination(agent) {
-    if (agent.role === 'crewmate') {
-      // Go to next incomplete assigned task room
-      const nextTask = agent.assignedTasks.find(taskId => {
-        const task = this.tasks.find(t => t.id === taskId);
-        return task && !task.isComplete;
-      });
-      
-      if (nextTask) {
-        const task = this.tasks.find(t => t.id === nextTask);
-        return task ? task.roomId : 'cafeteria';
-      }
-      
-      // If no tasks, wander randomly
-      const roomIds = Object.keys(this.rooms);
-      return roomIds[Math.floor(Math.random() * roomIds.length)];
+    if(agent.role==='crewmate') {
+      const next=agent.assignedTasks.find(t=>!t.isComplete&&t.roomId!==agent.currentRoom)
+      if(next) return next.roomId
+      const rooms=Object.keys(this.rooms).filter(r=>r!==agent.currentRoom)
+      return rooms[Math.floor(Math.random()*rooms.length)]
     }
-    
-    if (agent.role === 'impostor') {
-      // Go to room with most crewmates
-      const rooms = Object.values(this.rooms);
-      const target = rooms
-        .filter(room => room.id !== agent.currentRoom)
-        .map(room => ({
-          id: room.id,
-          crewmateCount: room.agents.size
-        }))
-        .sort((a, b) => b.crewmateCount - a.crewmateCount)[0];
-      
-      return target ? target.id : 'cafeteria';
+    if(agent.role==='impostor') {
+      const target=Object.values(this.rooms)
+        .filter(r=>r.id!==agent.currentRoom)
+        .map(r=>({id:r.id,crew:r.getAgents().map(id=>this.agents.find(a=>a.id===id)).filter(a=>a&&a.alive&&a.role==='crewmate').length}))
+        .sort((a,b)=>b.crew-a.crew)[0]
+      return target?target.id:Object.keys(this.rooms).filter(r=>r!==agent.currentRoom)[0]
     }
-    
-    return 'cafeteria';
+    return 'cafeteria'
   }
 
   moveAgent(agent) {
-    try {
-      console.log(`moveAgent called for ${agent.name}, alive: ${agent.alive}, currentRoom: ${agent.currentRoom}, path length: ${agent.path?.length || 0}`)
-      
-      if (!agent.alive) {
-        console.log(`${agent.name} is dead, skipping movement`)
-        return
+    if(!agent.alive||agent.isBusy||this.gameTick<agent.idleUntil) return
+    if(!agent.path||agent.path.length===0) {
+      const dest=this.decideDestination(agent); if(!dest) return
+      const path=this.findPath(agent.currentRoom,dest)
+      if(!path||path.length<=1) return
+      agent.path=path.slice(1)
+    }
+    if(agent.path.length===0) return
+    const nextRoom=agent.path.shift()
+    this.rooms[agent.currentRoom]?.agents.delete(agent.id)
+    agent.previousRoom=agent.currentRoom; agent.currentRoom=nextRoom
+    this.rooms[nextRoom]?.agents.add(agent.id)
+    if(window.getRoomPosition) {
+      const pos=window.getRoomPosition(nextRoom)
+      if(pos&&window.THREE) {
+        const ox=(Math.random()-0.5)*2, oz=(Math.random()-0.5)*2
+        agent.targetPosition=new window.THREE.Vector3(pos.x+ox,0.8,pos.z+oz)
+        agent.isMoving=true
       }
-
-      // If no path planned, decide destination
-      if (!agent.path || agent.path.length === 0) {
-        console.log(`${agent.name} has no path, deciding destination`)
-        const dest = this.decideDestination(agent)
-        console.log(`${agent.name} decided destination: ${dest}`)
-        if (!dest) {
-          console.log(`${agent.name} has no destination, skipping`)
-          return
-        }
-        agent.path = this.findPath(agent.currentRoom, dest)
-        console.log(`${agent.name} path from ${agent.currentRoom} to ${dest}:`, agent.path)
-        if (agent.path && agent.path.length > 0) {
-          agent.path.shift() // remove current room from path
-          console.log(`${agent.name} path after shift:`, agent.path)
-        }
-      }
-
-      // Take one step
-      if (agent.path && agent.path.length > 0) {
-        const nextRoom = agent.path.shift()
-        console.log(`${agent.name} moving to ${nextRoom}`)
-        
-        // Update world room sets
-        this.rooms[agent.currentRoom].agents.delete(agent.id)
-        agent.previousRoom = agent.currentRoom
-        agent.currentRoom = nextRoom
-        this.rooms[nextRoom].agents.add(agent.id)
-        
-        agent.state = 'moving'
-        console.log(`MOVE: ${agent.name} → ${this.rooms[nextRoom].name}`)
-        this.logEvent('move', `${agent.name} moved to ${this.rooms[nextRoom].name}`)
-        
-        // Set target position for smooth movement
-        console.log(`DEBUG: Setting target position for ${agent.name} (id: ${agent.id}) to ${nextRoom}`)
-        console.log(`DEBUG: getRoomPosition exists:`, !!window.getRoomPosition)
-        console.log(`DEBUG: agentMeshes exists:`, !!window.agentMeshes)
-        console.log(`DEBUG: agentMeshes keys:`, Object.keys(window.agentMeshes || {}))
-        console.log(`DEBUG: agentMeshes size:`, Object.keys(window.agentMeshes || {}).length)
-        console.log(`DEBUG: looking for agent.id:`, agent.id)
-        console.log(`DEBUG: agent mesh exists:`, !!window.agentMeshes?.[agent.id])
-        console.log(`DEBUG: agent mesh via get:`, !!window.agentMeshes?.[agent.id])
-        console.log(`DEBUG: THREE exists:`, !!window.THREE)
-        
-        if (window.getRoomPosition && window.agentMeshes && window.agentMeshes[agent.id]) {
-          const roomPos = window.getRoomPosition(nextRoom)
-          console.log(`DEBUG: Room position:`, roomPos)
-          if (roomPos) {
-            try {
-              agent.targetPosition = new THREE.Vector3(roomPos.x, 0.5, roomPos.z)
-              agent.isMoving = true
-              console.log(`SUCCESS: Set target position for ${agent.name}:`, agent.targetPosition)
-            } catch (error) {
-              console.error(`ERROR creating Vector3:`, error)
-            }
-          }
-        } else {
-          console.log(`FAILED: Missing dependencies for target position`)
-        }
-      } else {
-        console.log(`${agent.name} has no path to move`)
-      }
-    } catch (error) {
-      console.error(`Error in moveAgent for ${agent.name}:`, error)
     }
-  }
-
-  decideDestination(agent) {
-    console.log(`decideDestination for ${agent.name}, role: ${agent.role}, assignedTasks: ${agent.assignedTasks?.length || 0}`)
-    
-    if (agent.role === 'crewmate') {
-      console.log(`${agent.name} assignedTasks:`, agent.assignedTasks)
-      
-      // Find actual task objects from task IDs
-      const allTasks = []
-      Object.values(this.rooms).forEach(room => {
-        allTasks.push(...room.tasks)
-      })
-      
-      // Head to next incomplete task room
-      const nextTaskObj = agent.assignedTasks
-        .map(taskId => allTasks.find(t => t.id === taskId))
-        .find(t => t && !t.isComplete && t.roomId !== agent.currentRoom)
-      
-      console.log(`${agent.name} nextTaskObj:`, nextTaskObj)
-      if (nextTaskObj) return nextTaskObj.roomId
-      
-      // All tasks done — wander randomly
-      console.log(`${agent.name} has no valid tasks, wandering randomly`)
-      const rooms = Object.keys(this.rooms).filter(r => r !== agent.currentRoom)
-      return rooms[Math.floor(Math.random() * rooms.length)]
-    }
-
-    if (agent.role === 'impostor') {
-      // Hunt room with most crewmates
-      const target = Object.values(this.rooms)
-        .filter(r => r.id !== agent.currentRoom)
-        .sort((a, b) => b.agents.size - a.agents.size)[0]
-      console.log(`${agent.name} (impostor) hunting target:`, target?.id || 'none')
-      return target ? target.id : null
-    }
-  }
-
-  // Game tick - called each frame/time step
-  tick() {
-    console.log(`=== TICK ${this.gameTick} - Phase: ${this.phase} ===`);
-    
-    if (this.phase !== 'roaming') {
-      console.log('Tick skipped - not in roaming phase');
-      return;
-    }
-    
-    this.gameTick++;
-    console.log(`Processing ${this.agents.length} agents`);
-    
-    // Move all alive agents
-    const aliveAgents = this.agents.filter(a => a.alive);
-    console.log(`Alive agents: ${aliveAgents.length}, moveAgent exists: ${typeof this.moveAgent}`);
-    aliveAgents.forEach((agent, index) => {
-      console.log(`About to call moveAgent for agent ${index + 1}: ${agent.name}`);
-      this.moveAgent(agent);
-    });
-    
-    // Update UI
-    this.updateAgentPanel();
-    
-    // Update agent perceptions
-    this.updatePerception();
-    
-    // Update suspicion visuals
-    this.updateSuspicionVisuals();
-    
-    // Update suspicion scores
-    this.updateSuspicions();
-    
-    // Process tasks
-    this.processTasks();
-    
-    // Process kills
-    this.processKills();
+    if(agent.path.length===0) agent.idleUntil=this.gameTick+Math.floor(Math.random()*3)+2
   }
 
   processTasks() {
-    // Process tasks for all alive agents
-    const aliveAgents = this.agents.filter(a => a.alive);
-    
-    for (const agent of aliveAgents) {
-      // Check if agent is in a room with tasks
-      const currentRoom = this.getRoom(agent.currentRoom);
-      if (!currentRoom || !currentRoom.tasks.length) continue;
-      
-      // Find if agent has an assigned task in this room
-      const agentTaskInRoom = agent.assignedTasks
-        .map(taskId => currentRoom.tasks.find(t => t.id === taskId))
-        .find(task => task && !task.isComplete);
-      
-      if (agentTaskInRoom) {
-        // Work on the task
-        const taskCompleted = agentTaskInRoom.workOn(agent.id);
-        
-        if (taskCompleted) {
-          // Task completed!
-          agent.completeTask(agentTaskInRoom);
-          this.logEvent('task', `${agent.name} completed ${agentTaskInRoom.name} in ${currentRoom.name}`);
-          
-          // Dispatch task completion event
-          document.dispatchEvent(new CustomEvent('taskDone', {
-            detail: { agent, task: agentTaskInRoom }
-          }));
-          
-          // Update task HUD
-          this.updateTaskHUD();
+    for(const agent of this.agents.filter(a=>a.alive)) {
+      if(agent.isBusy&&agent.currentTask) {
+        agent.taskProgress+=1
+        if(window.updateAgentProgressBar) window.updateAgentProgressBar(agent.id,agent.currentTask.getProgress())
+        const done=agent.currentTask.workOn(agent.id,1)
+        if(done) {
+          const taskName=agent.currentTask.name
+          const roomName=this.getRoom(agent.currentRoom)?.name||agent.currentRoom
+          agent.completedTasks.push(agent.currentTask)
+          agent.assignedTasks=agent.assignedTasks.filter(t=>t.id!==agent.currentTask.id)
+          agent.currentTask=null; agent.taskProgress=0; agent.isBusy=false; agent.state='idle'
+          if(window.hideAgentProgressBar) window.hideAgentProgressBar(agent.id)
+          this.logEvent('task',`${agent.name} completed ${taskName} in ${roomName}`)
+          document.dispatchEvent(new CustomEvent('taskDone',{detail:{agent}}))
+          this.updateTaskHUD()
         }
+        continue
+      }
+      if(agent.isBusy) continue
+      const myTask=agent.assignedTasks.find(t=>!t.isComplete&&!t.isFake&&t.roomId===agent.currentRoom)
+      if(myTask) {
+        agent.currentTask=myTask; agent.taskProgress=0; agent.isBusy=true; agent.state='working'
+        if(window.showAgentProgressBar) window.showAgentProgressBar(agent.id)
+        this.logEvent('task',`${agent.name} started ${myTask.name} in ${this.getRoom(agent.currentRoom)?.name}`)
+      }
+    }
+  }
+
+  processKills() {
+    for(const imp of this.agents.filter(a=>a.role==='impostor'&&a.alive)) {
+      if(imp.killCooldown>0) continue
+      const targets=this.getAgentsInRoom(imp.currentRoom).filter(a=>a.role==='crewmate'&&a.alive)
+      if(targets.length===0) continue
+      const victim=targets[Math.floor(Math.random()*targets.length)]
+      victim.alive=false; imp.killCooldown=45
+      this.rooms[imp.currentRoom].hasBody=true
+      this.rooms[imp.currentRoom].bodyOf=victim.name
+      if(window.handleAgentDeath) window.handleAgentDeath(victim)
+      this.logEvent('kill',`${imp.name} killed ${victim.name} in ${this.rooms[imp.currentRoom].name}`)
+      if(!this.pendingMeeting&&this.phase==='roaming') {
+        this.pendingMeeting=true; this.bodyFound=victim.name
+      }
+      this.getAgentsInRoom(imp.currentRoom)
+        .filter(a=>a.alive&&a.id!==imp.id&&a.id!==victim.id)
+        .forEach(w=>{
+          w.addMemory({tick:this.gameTick,type:'witnessed_kill',subject:imp.name,detail:`SAW ${imp.name} kill ${victim.name}`})
+          w.raiseSuspicion(imp.name,8)
+        })
+      for(const rId of this.getAdjacentRooms(imp.currentRoom)) {
+        for(const a of this.getAgentsInRoom(rId)) {
+          if(!a.alive) continue
+          a.addMemory({tick:this.gameTick,type:'heard',detail:`heard something near ${this.rooms[imp.currentRoom].name}`})
+          a.raiseSuspicion(imp.name,1.5)
+        }
+      }
+      document.dispatchEvent(new CustomEvent('agentDied',{detail:{agent:victim,killer:imp,room:imp.currentRoom}}))
+      return
+    }
+  }
+
+  updateSuspicions() {
+    for(const agent of this.agents.filter(a=>a.alive)) {
+      for(const other of this.agents.filter(a=>a.alive&&a.id!==agent.id)) {
+        if(agent.currentRoom===other.currentRoom) {
+          const doingTask=other.currentTask&&other.currentTask.roomId===other.currentRoom
+          agent.suspicions[other.name]=(agent.suspicions[other.name]||0)+(doingTask?0.05:0.15)
+        }
+        const roomAgents=this.getAgentsInRoom(agent.currentRoom)
+        if(roomAgents.length===2&&roomAgents.some(a=>a.id===other.id))
+          agent.suspicions[other.name]=(agent.suspicions[other.name]||0)+0.2
+      }
+      for(const name of Object.keys(agent.suspicions)) agent.suspicions[name]=Math.min(10,agent.suspicions[name])
+    }
+  }
+
+  updatePerception() {
+    for(const agent of this.agents.filter(a=>a.alive)) {
+      const visibleRooms=[agent.currentRoom,...this.getAdjacentRooms(agent.currentRoom)]
+      for(const roomId of visibleRooms) {
+        for(const other of this.getAgentsInRoom(roomId)) {
+          if(other.id===agent.id) continue
+          if(roomId===agent.currentRoom)
+            agent.addMemory({tick:this.gameTick,type:'saw',subject:other.name,detail:`saw ${other.name} in ${this.getRoom(roomId).name}`})
+          if(other.currentTask&&other.currentTask.roomId===roomId)
+            agent.suspicions[other.name]=Math.max(0,(agent.suspicions[other.name]||0)-0.3)
+        }
+        if(this.getRoom(roomId)?.hasBody)
+          agent.addMemory({tick:this.gameTick,type:'body',detail:`found body of ${this.getRoom(roomId).bodyOf} in ${this.getRoom(roomId).name}`})
       }
     }
   }
 
   updateSuspicionVisuals() {
-    // Calculate average suspicion for each agent
-    for (const agent of this.agents.filter(a => a.alive)) {
-      const aliveAgents = this.agents.filter(a => a.alive);
-      let totalSuspicion = 0;
-      let count = 0;
-      
-      for (const other of aliveAgents) {
-        if (other.id !== agent.id && other.suspicions[agent.name]) {
-          totalSuspicion += other.suspicions[agent.name];
-          count++;
-        }
-      }
-      
-      agent.avgSuspicion = count > 0 ? totalSuspicion / count : 0;
-      
-      // Update UI suspicion bar
-      this.updateAgentSuspicionBar(agent);
-      
-      // Update 3D scene visuals
-      this.updateAgentSuspicionVisuals(agent);
-    }
-  }
-
-  updateAgentSuspicionBar(agent) {
-    const agentCard = document.querySelector(`[data-agent-id="${agent.id}"]`);
-    if (!agentCard) return;
-    
-    // Remove existing suspicion bar if any
-    const existingBar = agentCard.querySelector('.suspicion-bar');
-    if (existingBar) existingBar.remove();
-    
-    // Create suspicion bar container
-    const suspicionContainer = document.createElement('div');
-    suspicionContainer.className = 'suspicion-container';
-    suspicionContainer.style.cssText = `
-      margin-top: 8px;
-      font-size: 11px;
-      font-weight: bold;
-    `;
-    
-    // Create suspicion bar
-    const suspicionBar = document.createElement('div');
-    suspicionBar.className = 'suspicion-bar';
-    const suspicionPercent = Math.min((agent.avgSuspicion / 10) * 100, 100);
-    
-    // Color based on suspicion level
-    let color = '#4caf50'; // green
-    if (agent.avgSuspicion >= 6) color = '#f44336'; // red
-    else if (agent.avgSuspicion >= 3) color = '#ff9800'; // yellow
-    
-    suspicionBar.style.cssText = `
-      width: 100%;
-      height: 6px;
-      background: #333;
-      border-radius: 3px;
-      overflow: hidden;
-      margin-top: 4px;
-    `;
-    
-    const suspicionFill = document.createElement('div');
-    suspicionFill.style.cssText = `
-      height: 100%;
-      width: ${suspicionPercent}%;
-      background: ${color};
-      transition: width 0.3s ease;
-      border-radius: 3px;
-    `;
-    
-    suspicionBar.appendChild(suspicionFill);
-    
-    // Add label
-    const suspicionLabel = document.createElement('div');
-    suspicionLabel.textContent = `SUSPICION: ${agent.avgSuspicion.toFixed(1)}`;
-    suspicionLabel.style.cssText = `color: ${color};`;
-    
-    suspicionContainer.appendChild(suspicionLabel);
-    suspicionContainer.appendChild(suspicionBar);
-    agentCard.appendChild(suspicionContainer);
-  }
-
-  updateAgentSuspicionVisuals(agent) {
-    const mesh = window.agentMeshes?.[agent.id];
-    if (!mesh) return;
-    
-    // Update glow ring color
-    const glowRing = mesh.children.find(child => child.userData.isGlowRing);
-    if (glowRing) {
-      if (agent.avgSuspicion > 5) {
-        // Turn red for suspicious agents
-        glowRing.material.color.setHex(0xff0000);
-        // Speed up pulse animation
-        glowRing.userData.pulseSpeed = 0.006; // Faster pulse
-      } else {
-        // Return to agent color for normal agents
-        glowRing.material.color.setHex(agent.color);
-        glowRing.userData.pulseSpeed = 0.002; // Normal pulse
-      }
-    }
-    
-    // Add/remove red point light for highly suspicious agents
-    const existingLight = mesh.children.find(child => child.userData.isSuspicionLight);
-    
-    if (agent.avgSuspicion > 8) {
-      if (!existingLight) {
-        // Add red point light
-        const suspicionLight = new THREE.PointLight(0xff0000, (agent.avgSuspicion - 8) * 0.5, 3);
-        suspicionLight.position.set(0, 2, 0);
-        suspicionLight.userData.isSuspicionLight = true;
-        mesh.add(suspicionLight);
-      } else {
-        // Update existing light intensity
-        existingLight.intensity = (agent.avgSuspicion - 8) * 0.5;
-      }
-    } else if (existingLight) {
-      // Remove light if suspicion drops
-      mesh.remove(existingLight);
-    }
-  }
-
-  processKills() {
-    // ...
-    for (const imp of this.agents.filter(a => a.role === 'impostor' && a.alive)) {
-      if (imp.killCooldown > 0) { 
-        imp.killCooldown--; 
-        continue;
-      }
-
-      const targets = this.getAgentsInRoom(imp.currentRoom)
-        .filter(a => a.role === 'crewmate' && a.id !== imp.id)
-
-      if (targets.length === 0) continue
-
-      // Pick weakest suspicion target (least likely to be believed)
-      const victim = targets.sort((a,b) =>
-        (imp.suspicions[a.name]||0) - (imp.suspicions[b.name]||0)
-      )[0]
-
-      // Kill
-      victim.alive = false
-      imp.killCooldown = window.GAME_CONFIG ? window.GAME_CONFIG.KILL_COOLDOWN_TICKS : 4
-      this.getRoom(imp.currentRoom).hasBody = true
-      this.getRoom(imp.currentRoom).bodyOf = victim.name
-      
-      // Spawn body marker
-      if (window.spawnBodyMarker) {
-        window.spawnBodyMarker(victim, victim.currentRoom);
-      }
-      
-      // Remove killed agent from world agents array to prevent duplicates on reset
-      const victimIndex = this.agents.findIndex(a => a.id === victim.id)
-      if (victimIndex > -1) {
-        this.agents.splice(victimIndex, 1)
-      }
-
-      this.logEvent('kill', `${imp.name} killed ${victim.name} in ${this.getRoom(imp.currentRoom).name}`)
-
-      // Check for witnesses in same room
-      const witnesses = this.getAgentsInRoom(imp.currentRoom)
-        .filter(a => a.alive && a.id !== imp.id && a.id !== victim.id)
-
-      for (const w of witnesses) {
-        w.addMemory({
-          tick: this.gameTick,
-          type: 'witnessed_kill',
-          subject: imp.name,
-          detail: `SAW ${imp.name} kill ${victim.name} in ${this.getRoom(imp.currentRoom).name}` 
-        })
-        w.raiseSuspicion(imp.name, 8)  // very high — they saw it
-        this.logEvent('system', `${w.name} witnessed the kill!`)
-        this.pendingMeeting = true
-        this.bodyFound = victim.name
-      }
-
-      // Adjacent room witnesses (heard something)
-      const adjacent = this.getAdjacentRooms(imp.currentRoom)
-      for (const roomId of adjacent) {
-        for (const a of this.getAgentsInRoom(roomId)) {
-          if (!a.alive) continue
-          a.addMemory({
-            tick: this.gameTick,
-            type: 'heard',
-            detail: `heard something suspicious near ${this.getRoom(imp.currentRoom).name}` 
-          })
-          a.raiseSuspicion(imp.name, 1.5)
+    for(const agent of this.agents.filter(a=>a.alive)) {
+      const others=this.agents.filter(a=>a.alive&&a.id!==agent.id)
+      const total=others.reduce((s,a)=>s+(a.suspicions[agent.name]||0),0)
+      agent.avgSuspicion=others.length>0?total/others.length:0
+      const mesh=window.agentMeshes?.[agent.id]
+      if(mesh) {
+        const glowRing=mesh.children.find(c=>c.userData?.isGlowRing)
+        if(glowRing) {
+          if(agent.avgSuspicion>5) { glowRing.material.color.setHex(0xff0000); glowRing.userData.pulseSpeed=0.006 }
+          else { glowRing.material.color.set(agent.color); glowRing.userData.pulseSpeed=0.002 }
         }
       }
     }
   }
 
-  updateSuspicions() {
-    const impostors = this.agents.filter(a => a.role === 'impostor' && a.alive)
+  // ============================================================
+  // MAIN TICK  — meeting fix is here
+  // ============================================================
+  async tick() {
+    if(this.phase==='meeting'||this.phase==='voting'||this.phase==='discussion'||this.phase==='gameover') return
+    if(window.meetingInProgress) return
 
-    for (const agent of this.agents.filter(a => a.alive)) {
-      for (const other of this.agents.filter(a => a.alive && a.id !== agent.id)) {
+    this.gameTick++
+    this.agents.filter(a=>a.role==='impostor'&&a.alive).forEach(imp=>{ if(imp.killCooldown>0) imp.killCooldown-- })
+    this.agents.filter(a=>a.alive).forEach(a=>this.moveAgent(a))
+    this.processTasks()
+    this.processKills()           // may set pendingMeeting=true & increment dead count
+    this.updatePerception()
+    this.updateSuspicions()
+    this.updateSuspicionVisuals()
 
-        // Sharing a room with someone raises mild suspicion over time
-        if (agent.currentRoom === other.currentRoom) {
-          // But less if they're visibly doing a task
-          const doingTask = other.currentTask && other.currentTask.roomId === other.currentRoom
-          const delta = doingTask ? 0.05 : 0.15
-          agent.suspicions[other.name] = (agent.suspicions[other.name] || 0) + delta
-        }
-
-        // Being alone with someone is more suspicious
-        const roomAgents = this.getAgentsInRoom(agent.currentRoom)
-        if (roomAgents.length === 2 && roomAgents.some(a => a.id === other.id)) {
-          agent.suspicions[other.name] = (agent.suspicions[other.name] || 0) + 0.3
+    // ✅ FIX: Trigger meeting on ANY death increase, not just when pendingMeeting flag is set
+    const currentDeadCount = this.agents.filter(a=>!a.alive).length
+    if(currentDeadCount > this.lastKnownDeadCount && !window.meetingInProgress && this.phase === 'roaming') {
+      // Set bodyFound if not already set (for deaths outside processKills)
+      if(!this.bodyFound) {
+        // Find the most recently dead agent
+        const deadAgents = this.agents.filter(a => !a.alive)
+        if(deadAgents.length > 0) {
+          this.bodyFound = deadAgents[deadAgents.length - 1].name
         }
       }
-
-      // Cap all suspicion scores at 10
-      for (const name of Object.keys(agent.suspicions)) {
-        agent.suspicions[name] = Math.min(10, agent.suspicions[name])
-      }
+      // check win first (impostor might have won by equalising)
+      const winnerPre = this.checkWinCondition()
+      if(winnerPre) { if(window.endGame) endGame(winnerPre); return }
+      await triggerMeeting()
+      // after meeting, check win again (ejection might have ended the game)
+      const winnerPost = this.checkWinCondition()
+      if(winnerPost) { if(window.endGame) endGame(winnerPost); return }
+      return
     }
-  }
 
-  updatePerception() {
-    for (const agent of this.agents.filter(a => a.alive)) {
-      const visibleRooms = [
-        agent.currentRoom,
-        ...this.getAdjacentRooms(agent.currentRoom)
-      ]
+    const winner = this.checkWinCondition()
+    if(winner) { if(window.endGame) endGame(winner); return }
 
-      for (const roomId of visibleRooms) {
-        const agentsHere = this.getAgentsInRoom(roomId)
-        
-        for (const other of agentsHere) {
-          if (other.id === agent.id) continue
-        
-          // See someone in same room
-          if (roomId === agent.currentRoom) {
-            agent.addMemory({
-              tick: this.gameTick,
-              type: 'saw',
-              subject: other.name,
-              location: roomId,
-              detail: `saw ${other.name} in ${this.getRoom(roomId).name}` 
-            });
-          }
-
-          // See someone doing task
-          if (other.currentTask && other.currentTask.roomId === roomId) {
-            agent.addMemory({
-              tick: this.gameTick,
-              type: 'task_witness',
-              subject: other.name,
-              detail: `${other.name} appeared to work in ${this.getRoom(roomId).name}` 
-            });
-            // Witnessing tasks lowers suspicion
-            agent.suspicions[other.name] = Math.max(
-              0, (agent.suspicions[other.name] || 0) - 0.5
-            );
-          }
-        }
-
-        // See a dead body
-        if (this.getRoom(roomId).hasBody && !this.pendingMeeting) {
-          agent.addMemory({
-            tick: this.gameTick,
-            type: 'body',
-            detail: `found body of ${this.getRoom(roomId).bodyOf} in ${this.getRoom(roomId).name}` 
-          });
-          this.pendingMeeting = true;
-          this.bodyFound = this.getRoom(roomId).bodyOf;
-          this.logEvent('meeting', `${agent.name} found a body in ${this.getRoom(roomId).name}!`);
-        }
-      }
-    }
+    this.updateAgentPanel()
+    this.updateTaskHUD()
   }
 
   initializeTasks() {
-    // Available tasks per room
-    const taskDefinitions = {
-      cafeteria:  { name: 'Fix Wiring',     ticks: 3 },
-      reactor:    { name: 'Start Reactor',  ticks: 5 },
-      medbay:     { name: 'Submit Scan',    ticks: 2 },
-      security:   { name: 'Check Cameras',  ticks: 2 },
-      electrical: { name: 'Reset Breakers', ticks: 4 },
-      storage:    { name: 'Fuel Engines',   ticks: 3 },
-      admin:      { name: 'Swipe Card',     ticks: 1 }
-    };
-
-    // Calculate total tasks needed
-    const totalTasks = (window.GAME_CONFIG ? window.GAME_CONFIG.TASKS_PER_AGENT : 3) * 
-                      (window.GAME_CONFIG ? window.GAME_CONFIG.TOTAL_AGENTS : 6);
-    
-    const roomIds = Object.keys(taskDefinitions);
-    const tasks = [];
-    let taskId = 0;
-
-    // Create tasks and distribute randomly across rooms
-    for (let i = 0; i < totalTasks; i++) {
-      const roomId = roomIds[Math.floor(Math.random() * roomIds.length)];
-      const taskDef = taskDefinitions[roomId];
-      
-      const task = new Task(
-        taskId++,
-        roomId,
-        taskDef.name,
-        taskDef.ticks
-      );
-      
-      tasks.push(task);
+    Object.values(this.rooms).forEach(r=>{ r.tasks=[] })
+    const taskDefs = {
+      cafeteria:{name:'Fix Wiring',secs:5}, reactor:{name:'Start Reactor',secs:8},
+      medbay:{name:'Submit Scan',secs:4}, security:{name:'Check Cameras',secs:4},
+      electrical:{name:'Reset Breakers',secs:6}, storage:{name:'Fuel Engines',secs:5},
+      admin:{name:'Swipe Card',secs:3}
     }
-
-    // Assign tasks to rooms
-    tasks.forEach(task => {
-      const room = this.rooms[task.roomId];
-      if (room) {
-        room.tasks.push(task);
-      }
-    });
-
-    // Log task distribution for verification
-    console.log('=== TASK ASSIGNMENT ===');
-    Object.keys(this.rooms).forEach(roomId => {
-      const room = this.rooms[roomId];
-      console.log(`${room.name}: ${room.tasks.length} tasks`);
-      room.tasks.forEach(task => {
-        console.log(`  - ${task.name} (${task.ticksToComplete} ticks)`);
-      });
-    });
-    console.log(`Total tasks created: ${totalTasks}`);
-    console.log('=== END TASK ASSIGNMENT ===');
+    const impostorCount=window.GAME_CONFIG?.IMPOSTOR_COUNT??1
+    const tasksPerAgent=window.GAME_CONFIG?.TASKS_PER_AGENT??5
+    const totalNeeded=(AGENT_ROSTER.length-impostorCount)*tasksPerAgent+10
+    const roomIds=Object.keys(taskDefs); let taskId=0
+    for(let i=0;i<totalNeeded;i++) {
+      const roomId=roomIds[taskId%roomIds.length], def=taskDefs[roomId]
+      this.rooms[roomId].tasks.push(new Task(taskId++,roomId,def.name,def.secs))
+    }
   }
 
-  getTotalTasks() {
-    let total = 0;
-    Object.values(this.rooms).forEach(room => {
-      total += room.tasks.length;
-    });
-    return total;
+  getTotalTasks()    { let t=0; Object.values(this.rooms).forEach(r=>t+=r.tasks.length); return t }
+  getCompletedTasks(){ let d=0; Object.values(this.rooms).forEach(r=>d+=r.tasks.filter(t=>t.isComplete).length); return d }
+
+  checkWinCondition() {
+    if(this.phase==='gameover') return this.winner
+    const alive=this.agents.filter(a=>a.alive)
+    const aliveImp=alive.filter(a=>a.isImpostor())
+    const aliveCrew=alive.filter(a=>!a.isImpostor())
+    const total=this.getTotalTasks(), done=this.getCompletedTasks()
+    if(total>0&&done>=total) { this.winner='crewmates'; this.phase='gameover'; this.logEvent('victory','Crewmates win — all tasks done!'); return 'crewmates' }
+    if(aliveImp.length===0)  { this.winner='crewmates'; this.phase='gameover'; this.logEvent('victory','Crewmates win — impostor eliminated!'); return 'crewmates' }
+    if(aliveImp.length>=aliveCrew.length) { this.winner='impostors'; this.phase='gameover'; this.logEvent('victory','Impostors win!'); return 'impostors' }
+    return null
   }
 
-  getCompletedTasks() {
-    let completed = 0;
-    Object.values(this.rooms).forEach(room => {
-      completed += room.tasks.filter(task => task.isComplete).length;
-    });
-    return completed;
-  }
-
-  // PHASE MANAGER
   setPhase(newPhase) {
-    const oldPhase = this.phase;
-    this.phase = newPhase;
-    this.logEvent('system', `Phase changed from ${oldPhase} to ${newPhase}`);
-    
-    // Update HUD
-    this.updatePhaseHUD(newPhase);
-    
-    // Dispatch event for other systems
-    document.dispatchEvent(new CustomEvent('phaseChange', { 
-      detail: { oldPhase, newPhase, tick: this.gameTick }
-    }));
+    const old=this.phase; this.phase=newPhase; this.updatePhaseHUD(newPhase)
+    document.dispatchEvent(new CustomEvent('phaseChange',{detail:{oldPhase:old,newPhase,tick:this.gameTick}}))
   }
 
-  // EVENT BUS SYSTEM
   setupEventListeners() {
-    // Phase change listener
-    document.addEventListener('phaseChange', (event) => {
-      this.updatePhaseHUD(event.detail.newPhase);
-    });
-
-    // Agent died listener
-    document.addEventListener('agentDied', (event) => {
-      const { agent, killer, room } = event.detail;
-      this.updateAgentPanel();
-      this.checkWinCondition();
-      this.updateSuspicionVisuals();
-    });
-
-    // Task completed listener
-    document.addEventListener('taskDone', (event) => {
-      const { agent, task } = event.detail;
-      this.updateTaskHUD();
-      // ...
-      this.checkWinCondition();
-    });
-
-    // Body found listener
-    document.addEventListener('bodyFound', (event) => {
-      const { reporter, body, room } = event.detail;
-      
-      // Trigger meeting after 1 tick delay
-      setTimeout(() => {
-        this.startMeeting(reporter, body);
-      }, window.GAME_CONFIG ? window.GAME_CONFIG.TICK_RATE_MS : 1000);
-    });
+    document.addEventListener('agentDied',()=>{ this.updateAgentPanel(); this.updateSuspicionVisuals() })
+    document.addEventListener('taskDone', ()=>{ this.updateTaskHUD() })
   }
 
-  // HUD UPDATE METHODS
   updatePhaseHUD(phase) {
-    const phaseElement = document.getElementById('phase-display');
-    if (phaseElement) {
-      const phaseText = {
-        'idle': 'IDLE',
-        'roaming': 'ROAMING',
-        'meeting': 'MEETING',
-        'voting': 'VOTING',
-        'gameover': this.winner ? `${this.winner.toUpperCase()} WIN` : 'GAME OVER'
-      };
-      
-      phaseElement.textContent = phaseText[phase] || phase.toUpperCase();
-      
-      // Update phase pill class for color
-      phaseElement.className = 'phase-pill';
-      if (phase === 'meeting') {
-        phaseElement.classList.add('meeting');
-      } else if (phase === 'voting') {
-        phaseElement.classList.add('voting');
-      } else if (phase === 'gameover') {
-        phaseElement.classList.add('gameover');
-      } else {
-        phaseElement.classList.add('roaming');
-      }
-    }
+    const el=document.getElementById('phase-display'); if(!el) return
+    const labels={idle:'IDLE',roaming:'ROAMING',meeting:'MEETING',discussion:'DISCUSSION',voting:'VOTING',gameover:this.winner?`${this.winner.toUpperCase()} WIN`:'GAME OVER'}
+    el.textContent=labels[phase]||phase.toUpperCase()
+    el.className='phase-pill '+(phase==='meeting'||phase==='discussion'?'meeting':phase==='voting'?'voting':phase==='gameover'?'gameover':'roaming')
   }
 
   updateAgentPanel() {
-  const panel = document.getElementById('agentsList')
-  if (!panel) return
-  panel.innerHTML = ''
-
-  // Show ALL agents — alive first, dead after
-  const alive = WORLD.agents.filter(a => a.alive)
-  const dead = WORLD.agents.filter(a => !a.alive)
-  const ordered = [...alive, ...dead]
-
-  for (const agent of ordered) {
-    const card = document.createElement('div')
-    card.className = `agent-card ${agent.alive ? '' : 'dead'}` 
-
-    // Only reveal impostor role after death
-    const showRole = !agent.alive || WORLD.phase === 'gameover'
-    const roleLabel = showRole ? agent.role.toUpperCase() : 'CREW'
-    const roleClass = showRole && agent.role === 'impostor' 
-      ? 'impostor' : 'crewmate'
-
-    const tasksDone = agent.assignedTasks
-      ?.filter(t => t.isComplete).length || 0
-    const tasksTotal = agent.assignedTasks?.length || 0
-    const taskPct = tasksTotal > 0 
-      ? (tasksDone / tasksTotal) * 100 : 0
-
-    const avgSuspicion = WORLD.agents
-      .filter(a => a.alive && a.name !== agent.name)
-      .reduce((sum, a) => sum + (a.suspicions[agent.name] || 0), 0) 
-      / Math.max(1, WORLD.agents.filter(a => a.alive).length - 1)
-
-    const suspPct = Math.min((avgSuspicion / 10) * 100, 100)
-    const suspColor = avgSuspicion > 6 ? '#ef5350' 
-                    : avgSuspicion > 3 ? '#ffca28' 
-                    : '#66bb6a'
-
-    card.innerHTML = `
-      <div class="agent-header">
-        <span class="agent-dot" 
-          style="background:${agent.color};
-          opacity:${agent.alive ? 1 : 0.4}">
-          ${agent.alive ? '' : '✕'}
-        </span>
-        <span class="agent-name" 
-          style="opacity:${agent.alive ? 1 : 0.5}">
-          ${agent.name}
-        </span>
-        <span class="role-badge ${roleClass}">
-          ${roleLabel}
-        </span>
-        ${!agent.alive ? '<span class="dead-tag">DEAD</span>' : ''}
-      </div>
-
-      ${agent.alive ? `
-        <div class="agent-bars">
-          <div class="bar-row">
-            <span class="bar-label">TASKS</span>
-            <div class="bar-bg">
-              <div class="bar-fill task-fill" 
-                style="width:${taskPct}%"></div>
-            </div>
-            <span class="bar-val">${tasksDone}/${tasksTotal}</span>
+    const panel=document.getElementById('agent-cards'); if(!panel) return
+    panel.innerHTML=''
+    const alive=this.agents.filter(a=>a.alive), dead=this.agents.filter(a=>!a.alive)
+    for(const agent of [...alive,...dead]) {
+      const card=document.createElement('div')
+      card.className=`agent-card ${agent.alive?'':'dead'}`
+      card.setAttribute('data-agent-id',agent.id)
+      const showRole=!agent.alive||this.phase==='gameover'
+      const roleLabel=showRole?agent.role.toUpperCase():'CREW'
+      const roleClass=showRole&&agent.role==='impostor'?'impostor':'crewmate'
+      const totalAssigned=agent.assignedTasks.length+agent.completedTasks.length
+      const tasksDone=agent.completedTasks.length
+      const taskPct=totalAssigned>0?(tasksDone/totalAssigned)*100:0
+      const avgSusp=agent.avgSuspicion||0
+      const suspColor=avgSusp>8?'#ef5350':avgSusp>5?'#ff9800':'#4caf50'
+      card.innerHTML=`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${agent.color};opacity:${agent.alive?1:0.4};display:inline-flex;align-items:center;justify-content:center;font-size:7px;color:#000;font-weight:bold;">${agent.alive?'':'✕'}</span>
+          <span style="font-weight:bold;font-size:11px;color:${agent.alive?'#fff':'#555'};flex:1;">${agent.name}</span>
+          <span style="padding:1px 5px;border-radius:3px;font-size:8px;font-weight:bold;background:${roleClass==='impostor'?'rgba(255,0,0,0.25)':'rgba(0,255,0,0.15)'};color:${roleClass==='impostor'?'#ff5252':'#69f0ae'};border:1px solid ${roleClass==='impostor'?'rgba(255,0,0,0.5)':'rgba(0,255,0,0.3)'};">${roleLabel}</span>
+        </div>
+        ${agent.alive?`
+          <div style="margin-bottom:4px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#8ab4c4;margin-bottom:2px;"><span>TASKS</span><span>${tasksDone}/${totalAssigned}</span></div>
+            <div style="height:4px;background:#1a2a3a;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${taskPct}%;background:#00e5ff;border-radius:2px;transition:width 0.5s;"></div></div>
           </div>
-          <div class="bar-row">
-            <span class="bar-label">SUSP</span>
-            <div class="bar-bg">
-              <div class="bar-fill susp-fill" 
-                style="width:${suspPct}%;background:${suspColor}">
-              </div>
+          <div style="margin-bottom:4px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;"><span style="color:#8ab4c4;">SUSP</span><span style="color:${suspColor};">${avgSusp.toFixed(1)}</span></div>
+            <div style="height:6px;background:#1a2a3a;border-radius:3px;overflow:hidden;position:relative;">
+              <div style="position:absolute;left:0;top:0;width:60%;height:100%;background:#4caf50;opacity:0.2;"></div>
+              <div style="position:absolute;left:60%;top:0;width:20%;height:100%;background:#ff9800;opacity:0.2;"></div>
+              <div style="position:absolute;left:80%;top:0;width:20%;height:100%;background:#f44336;opacity:0.2;"></div>
+              ${avgSusp<=6?`<div style="position:absolute;left:0;top:0;width:${(avgSusp/10)*100}%;height:100%;background:#4caf50;transition:width 0.5s;"></div>`
+              :avgSusp<=8?`<div style="position:absolute;left:0;top:0;width:60%;height:100%;background:#4caf50;"></div><div style="position:absolute;left:60%;top:0;width:${((avgSusp-6)/2)*20}%;height:100%;background:#ff9800;"></div>`
+              :`<div style="position:absolute;left:0;top:0;width:60%;height:100%;background:#4caf50;"></div><div style="position:absolute;left:60%;top:0;width:20%;height:100%;background:#ff9800;"></div><div style="position:absolute;left:80%;top:0;width:${((avgSusp-8)/2)*20}%;height:100%;background:#f44336;"></div>`}
             </div>
-            <span class="bar-val" style="color:${suspColor}">
-              ${avgSuspicion.toFixed(1)}
-            </span>
           </div>
-        </div>
-        <div class="agent-location">
-          📍 ${WORLD.rooms[agent.currentRoom]?.name || agent.currentRoom}
-        </div>
-      ` : ` 
-        <div class="agent-location" style="opacity:0.4">
-          ☠ eliminated — was in ${WORLD.rooms[agent.currentRoom]?.name || agent.currentRoom}
-          ${showRole && agent.role === 'impostor' 
-            ? ' — <span style="color:#ef5350">WAS IMPOSTOR</span>' 
-            : ''}
-        </div>
-      `}
-    `
-    panel.appendChild(card)
+          ${agent.role==='impostor'?`
+            <div style="margin-bottom:4px;">
+              <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;"><span style="color:#8ab4c4;">KILL CD</span><span style="color:${agent.killCooldown>0?'#f44336':'#4caf50'};">${agent.killCooldown>0?agent.killCooldown+'s':'READY'}</span></div>
+              <div style="height:4px;background:#1a2a3a;border-radius:2px;overflow:hidden;"><div style="height:100%;width:${agent.killCooldown>0?((45-agent.killCooldown)/45)*100:100}%;background:${agent.killCooldown>0?'#f44336':'#4caf50'};transition:width 0.5s;"></div></div>
+            </div>`:''}
+          <div style="font-size:9px;color:#00e5ff;margin-top:2px;">📍 ${this.rooms[agent.currentRoom]?.name||'?'}</div>
+        `:`<div style="font-size:9px;color:#444;margin-top:4px;">☠ eliminated — ${this.rooms[agent.currentRoom]?.name||'?'}${showRole&&agent.role==='impostor'?'<span style="color:#ef5350;"> — WAS IMPOSTOR</span>':''}</div>`}
+      `
+      panel.appendChild(card)
+    }
   }
-}
 
   updateTaskHUD() {
-    const totalTasks = this.getTotalTasks();
-    const completedTasks = this.getCompletedTasks();
-
-    // Update task counter in stat chips
-    const taskCounter = document.getElementById('task-counter');
-    if (taskCounter) {
-      taskCounter.textContent = `${completedTasks}/${totalTasks}`;
-    }
-
-    // Update alive counter
-    const aliveCounter = document.getElementById('alive-counter');
-    if (aliveCounter && this.agents.length > 0) {
-      const aliveCount = this.agents.filter(agent => agent.alive).length;
-      const totalCount = this.agents.length;
-      aliveCounter.textContent = `${aliveCount}/${totalCount}`;
-    }
+    const total=this.getTotalTasks(), done=this.getCompletedTasks()
+    const taskEl=document.getElementById('task-counter')
+    const aliveEl=document.getElementById('alive-counter')
+    const roundEl=document.getElementById('round-counter')
+    if(taskEl)  taskEl.textContent=`${done}/${total}`
+    if(aliveEl) aliveEl.textContent=`${this.agents.filter(a=>a.alive).length}/${this.agents.length}`
+    if(roundEl) roundEl.textContent=String(this.gameTick).padStart(2,'0')
   }
 
-  getRoom(roomId) {
-    return this.rooms[roomId] || null;
-  }
-
+  advanceTick() {}
+  getRoom(id)  { return this.rooms[id]||null }
   getAgentsInRoom(roomId) {
-    const room = this.getRoom(roomId);
-    if (!room) return [];
-    
-    // Get agent IDs from room and return full agent objects
-    return room.getAgents()
-      .map(agentId => this.agents.find(agent => agent.id === agentId))
-      .filter(agent => agent && agent.alive);
+    const room=this.getRoom(roomId); if(!room) return []
+    return room.getAgents().map(id=>this.agents.find(a=>a.id===id)).filter(a=>a&&a.alive)
+  }
+  getAdjacentRooms(roomId) { return this.getRoom(roomId)?.connectedTo||[] }
+
+  logEvent(type,message) {
+    this.events.push({tick:this.gameTick,type,message})
+    if(this.events.length>500) this.events=this.events.slice(-300)
+    this.addLog(message,type)
   }
 
-  getAdjacentRooms(roomId) {
-    const room = this.getRoom(roomId);
-    return room ? room.connectedTo : [];
+  addLog(message,type='system') {
+    const log=document.querySelector('#event-log-container')||document.querySelector('.event-log')
+    if(!log) return
+    const time=new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit'})
+    const colorMap={kill:'#ff4444',meeting:'#cc88ff',vote:'#ffcc00',task:'#00cc66',system:'#2a4a5a',victory:'#ffcc00'}
+    const item=document.createElement('div')
+    item.className='event-item'
+    item.innerHTML=`<span class="event-time">${time}</span><span style="color:${colorMap[type]||'#8ab4c4'}">${message}</span>`
+    log.appendChild(item); log.scrollTop=log.scrollHeight
+    while(log.children.length>80) log.removeChild(log.firstChild)
   }
 
-  findPath(fromRoomId, toRoomId) {
-    // BFS shortest path algorithm
-    if (fromRoomId === toRoomId) return [fromRoomId];
-    
-    const visited = new Set();
-    const queue = [{ room: fromRoomId, path: [fromRoomId] }];
-    visited.add(fromRoomId);
-    
-    while (queue.length > 0) {
-      const { room, path } = queue.shift();
-      
-      const adjacentRooms = this.getAdjacentRooms(room);
-      for (const adjacentRoom of adjacentRooms) {
-        if (adjacentRoom === toRoomId) {
-          return [...path, adjacentRoom];
-        }
-        
-        if (!visited.has(adjacentRoom)) {
-          visited.add(adjacentRoom);
-          queue.push({ room: adjacentRoom, path: [...path, adjacentRoom] });
-        }
-      }
-    }
-    
-    return null; // No path found
-  }
-
-  logEvent(type, message, involvedAgents = []) {
-    const event = {
-      tick: this.gameTick,
-      type,
-      message,
-      involvedAgents: involvedAgents.map(agent => agent.id),
-      timestamp: new Date().toISOString()
-    };
-    
-    this.events.push(event);
-    
-    // Keep event history manageable
-    if (this.events.length > 1000) {
-      this.events = this.events.slice(-500);
-    }
-    
-    // Call addLog for UI updates
-    this.addLog(message, type);
-  }
-
-  addLog(message, type = 'info') {
-    // This will be connected to the UI event log
-    const eventLog = document.querySelector('.event-log');
-    if (eventLog) {
-      const eventItem = document.createElement('div');
-      eventItem.className = 'event-item';
-      
-      const time = new Date().toLocaleTimeString('en-US', { 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-      
-      let className = '';
-      if (type === 'kill') className = 'hud-danger';
-      else if (type === 'meeting' || type === 'vote') className = 'hud-accent';
-      else className = 'hud-text';
-      
-      eventItem.innerHTML = `
-        <span class="event-time">${time}</span>
-        <span class="${className}">${message}</span>
-      `;
-      
-      eventLog.appendChild(eventItem);
-      eventLog.scrollTop = eventLog.scrollHeight;
-      
-      // Limit displayed events
-      while (eventLog.children.length > 50) {
-        eventLog.removeChild(eventLog.firstChild);
-      }
-    }
-  }
-
-  checkWinCondition() {
-    const aliveAgents = this.agents.filter(agent => agent.alive);
-    const aliveCrewmates = aliveAgents.filter(agent => !agent.isImpostor());
-    const aliveImpostors = aliveAgents.filter(agent => agent.isImpostor());
-
-    // Check if crewmates win by completing all tasks
-    const totalTasks = this.getTotalTasks();
-    const completedTasks = this.getCompletedTasks();
-    
-    if (totalTasks > 0 && completedTasks === totalTasks) {
-      this.winner = 'crewmates';
-      this.phase = 'gameover';
-      this.logEvent('victory', 'Crewmates win by completing all tasks!');
-      if (window.endGame) endGame('crewmates');
-      return 'crewmates';
-    }
-
-    // Check if crewmates win by ejecting all impostors
-    if (aliveImpostors.length === 0) {
-      this.winner = 'crewmates';
-      this.phase = 'gameover';
-      this.logEvent('victory', 'Crewmates win by ejecting all impostors!');
-      if (window.endGame) endGame('crewmates');
-      return 'crewmates';
-    }
-
-    // Check if impostors win (impostors >= crewmates)
-    if (aliveImpostors.length >= aliveCrewmates.length) {
-      this.winner = 'impostors';
-      this.phase = 'gameover';
-      this.logEvent('victory', 'Impostors win by equalizing crewmates!');
-      if (window.endGame) endGame('impostors');
-      return 'impostors';
-    }
-
-    return null;
-  }
-
-  advanceTick() {
-    this.gameTick++;
-    this.logEvent('tick', `Simulation tick ${this.gameTick}`);
-    
-    // Update round counter in UI
-    const roundCounter = document.getElementById('round-counter');
-    if (roundCounter) {
-      roundCounter.textContent = this.gameTick.toString().padStart(2, '0');
-    }
-    
-    // Check win conditions after each tick
-    if (this.phase === 'roaming') {
-      this.checkWinCondition();
-    }
-  }
-
-  startMeeting(calledBy, bodyFound = null) {
-    if (this.phase !== 'roaming') return false;
-    
-    this.phase = 'meeting';
-    this.pendingMeeting = true;
-    this.bodyFound = bodyFound;
-    
-    const reason = bodyFound ? `Body found in ${bodyFound.currentRoom}` : 'Emergency meeting called';
-    this.logEvent('meeting', `${reason} by ${calledBy.name}`, [calledBy]);
-    
-    // Set meeting timer
-    setTimeout(() => {
-      this.startVoting();
-    }, window.GAME_CONFIG ? window.GAME_CONFIG.MEETING_DURATION_MS : 8000);
-    
-    return true;
-  }
-
-  startVoting() {
-    this.phase = 'voting';
-    this.pendingMeeting = false;
-    this.logEvent('vote', 'Voting phase started');
-    
-    // Auto-resolve voting after a delay
-    setTimeout(() => {
-      this.resolveVoting();
-    }, 5000);
-  }
-
-  resolveVoting() {
-    // Simple voting logic - can be expanded
-    const aliveAgents = this.agents.filter(agent => agent.alive);
-    
-    // For now, skip voting and return to roaming
-    this.phase = 'roaming';
-    this.bodyFound = null;
-    this.logEvent('vote', 'Voting ended, returning to roaming');
-  }
-
-  killAgent(killer, victim) {
-    if (!killer.alive || !victim.alive) return false;
-    if (killer.killCooldown > 0) return false;
-    
-    victim.alive = false;
-    victim.deathTick = this.gameTick;
-    victim.deathRoom = victim.currentRoom;
-    
-    // Add body to room using RoomState method
-    const room = this.getRoom(victim.currentRoom);
-    if (room) {
-      room.addBody(victim.id);
-    }
-    
-    // Set kill cooldown
-    killer.killCooldown = window.GAME_CONFIG ? window.GAME_CONFIG.KILL_COOLDOWN_TICKS : 4;
-    
-    this.logEvent('kill', `${killer.name} killed ${victim.name} in ${victim.currentRoom}`, [killer, victim]);
-    
-    // Dispatch agentDied event instead of direct calls
-    document.dispatchEvent(new CustomEvent('agentDied', {
-      detail: { agent: victim, killer, room: victim.currentRoom }
-    }));
-    
-    return true;
-  }
-
-  reportBody(reporter, body) {
-    const victim = this.agents.find(agent => agent.id === body.agentId);
-    if (victim) {
-      this.startMeeting(reporter, victim);
-    }
-  }
-
-  
-  completeTask(agent, task) {
-    if (!agent.alive) return false;
-    
-    task.completed = true;
-    task.completedTick = this.gameTick;
-    
-    this.logEvent('task', `${agent.name} completed task in ${agent.currentRoom}`, [agent]);
-    
-    // Dispatch taskDone event instead of direct calls
-    document.dispatchEvent(new CustomEvent('taskDone', {
-      detail: { agent, task }
-    }));
-    
-    return true;
-  }
-} // End of WorldState class
-
-// Create global world instance
-window.WORLD = new WorldState();
-
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { WorldState, WORLD: window.WORLD };
+  startMeeting(){} startVoting(){} resolveVoting(){} killAgent(){} reportBody(){} completeTask(){}
 }
+
+window.WORLD = new WorldState()
+if(typeof module!=='undefined'&&module.exports) module.exports={WorldState,WORLD:window.WORLD}
