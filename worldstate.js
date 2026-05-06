@@ -4,9 +4,9 @@
 const LLM_CONFIG = {
   provider: 'ollama',
   ollamaUrl: 'http://localhost:11434/api/generate',
-  model: 'tinyllama',
-  maxTokens: 80,
-  temperature: 0.4,
+  model: 'llama3',
+  maxTokens: 150,
+  temperature: 0.75,
 }
 
 async function callLLM(prompt) {
@@ -30,6 +30,51 @@ async function callLLM(prompt) {
 }
 window.callLLM = callLLM
 window.LLM_CONFIG = LLM_CONFIG
+
+async function callLLMStream(prompt, onChunk, onDone) {
+  try {
+    const res = await fetch(LLM_CONFIG.ollamaUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: LLM_CONFIG.model,
+        prompt: prompt,
+        stream: true,
+        options: {
+          num_predict: LLM_CONFIG.maxTokens,
+          temperature: LLM_CONFIG.temperature,
+        }
+      })
+    })
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let fullText = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const lines = decoder.decode(value).split('\n').filter(Boolean)
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line)
+          if (data.response) {
+            fullText += data.response
+            if (onChunk) onChunk(data.response, fullText)
+          }
+          if (data.done) { if (onDone) onDone(fullText); return fullText }
+        } catch(e) { continue }
+      }
+    }
+    if (onDone) onDone(fullText)
+    return fullText
+  } catch(e) {
+    console.warn('[LLM STREAM] Failed:', e.message)
+    if (onDone) onDone(null)
+    return null
+  }
+}
+window.callLLMStream = callLLMStream
 
 // ============================================================
 // AGENT STATEMENTS
@@ -74,6 +119,52 @@ function getAgentStatement(agent, context) {
   return t[Math.floor(Math.random() * t.length)]
 }
 window.getAgentStatement = getAgentStatement
+
+function buildAgentPrompt(agent, context, transcript) {
+  const aliveNames = WORLD.agents
+    .filter(a => a.alive && a.name !== agent.name)
+    .map(a => a.name).join(', ')
+
+  const memories = agent.memory
+    .slice(0, 3)
+    .map(m => `- ${m.detail}`)
+    .join('\n') || '- Nothing notable'
+
+  const topSuspect = agent.getTopSuspect()
+
+  const priorChat = transcript.length > 0
+    ? transcript.map(t => `${t.name}: "${t.statement}"`).join('\n')
+    : 'You are speaking first.'
+
+  const roleInstruction = agent.role === 'impostor'
+    ? `You are secretly the IMPOSTOR. You killed someone.
+Lie convincingly. Blame an innocent crewmate.
+Sound calm, logical, and helpful. Never admit guilt.`
+    : `You are an innocent CREWMATE.
+Share what you observed. Be specific about locations and people.
+Your top suspect is: ${topSuspect?.[0] || 'unknown'}.`
+
+  return `[INST] You are roleplaying as ${agent.name}, 
+a crew member on space station Void Station.
+
+SITUATION: ${context.bodyFound || 'someone'} was found dead.
+YOUR PERSONALITY: ${agent.personality?.trait || 'neutral'}
+PEOPLE IN THIS MEETING: ${aliveNames}
+
+WHAT YOU REMEMBER:
+${memories}
+
+WHAT OTHERS SAID ALREADY:
+${priorChat}
+
+YOUR ROLE: ${roleInstruction}
+
+Rules: ONE sentence only. No quotation marks. 
+Do not start with your name. Be specific.
+Reference your memories if possible. [/INST]
+${agent.name}:`
+}
+window.buildAgentPrompt = buildAgentPrompt
 
 // ============================================================
 // VOTING
