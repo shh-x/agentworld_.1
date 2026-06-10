@@ -5,7 +5,7 @@ const LLM_CONFIG = {
   provider: 'ollama',
   ollamaUrl: 'http://localhost:11434/api/generate',
   model: 'llama3',
-  maxTokens: 150,
+  maxTokens: 60,         // ⬇ was 150 — forces short replies
   temperature: 0.75,
 }
 
@@ -33,6 +33,10 @@ window.LLM_CONFIG = LLM_CONFIG
 
 async function callLLMStream(prompt, onChunk, onDone) {
   try {
+    console.log('LLM Stream - Starting request to:', LLM_CONFIG.ollamaUrl)
+    console.log('LLM Stream - Model:', LLM_CONFIG.model)
+    console.log('LLM Stream - Prompt length:', prompt.length)
+    
     const res = await fetch(LLM_CONFIG.ollamaUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,6 +50,12 @@ async function callLLMStream(prompt, onChunk, onDone) {
         }
       })
     })
+    
+    console.log('LLM Stream - Response status:', res.status, res.statusText)
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+    }
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -53,17 +63,31 @@ async function callLLMStream(prompt, onChunk, onDone) {
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.log('LLM Stream - Reading complete')
+        break
+      }
       const lines = decoder.decode(value).split('\n').filter(Boolean)
+      console.log('LLM Stream - Lines received:', lines.length)
       for (const line of lines) {
         try {
           const data = JSON.parse(line)
+          console.log('LLM Stream - Data:', data)
           if (data.response) {
             fullText += data.response
+            console.log('LLM Stream - Chunk received:', data.response)
+            console.log('LLM Stream - Full text so far:', fullText)
             if (onChunk) onChunk(data.response, fullText)
           }
-          if (data.done) { if (onDone) onDone(fullText); return fullText }
-        } catch(e) { continue }
+          if (data.done) { 
+            console.log('LLM Stream - Stream done, final text:', fullText)
+            if (onDone) onDone(fullText); 
+            return fullText 
+          }
+        } catch(e) { 
+          console.log('LLM Stream - Parse error:', e.message)
+          continue 
+        }
       }
     }
     if (onDone) onDone(fullText)
@@ -77,7 +101,7 @@ async function callLLMStream(prompt, onChunk, onDone) {
 window.callLLMStream = callLLMStream
 
 // ============================================================
-// AGENT STATEMENTS
+// AGENT STATEMENTS  (quick fallback lines used in Phase 1)
 // ============================================================
 function getAgentStatement(agent, context) {
   const aliveNames = WORLD.agents.filter(a => a.alive && a.name !== agent.name).map(a => a.name)
@@ -87,84 +111,295 @@ function getAgentStatement(agent, context) {
 
   if (agent.role === 'impostor') {
     const t = [
-      `I was doing my tasks the whole time, ${randomName} was acting strange.`,
-      `I passed by ${randomName} right before ${deadAgent} was found.`,
-      `Something about ${randomName} seems off, they were alone near the body.`,
-      `Ask ${randomName} where they were, I saw them sneaking around.`,
+      `not me, i was literally just doing tasks`,
+      `bro i was in ${WORLD.rooms[agent.currentRoom]?.name || 'the hall'} the whole time`,
+      `why is no one talking about ${randomName} tho`,
+      `i passed ${randomName} right before this happened`,
     ]
     return t[Math.floor(Math.random() * t.length)]
   }
   if (topSuspect) {
-    const memory = agent.memory[0]?.detail || null
-    if (memory) {
+    const mem = agent.memory.find(m => m.subject === topSuspect)
+    if (mem) {
       const t = [
-        `I noticed ${topSuspect} nearby and ${memory}.`,
-        `I ${memory} and I think ${topSuspect} is responsible.`,
-        `Based on what I saw, ${topSuspect} cannot be trusted.`,
+        `${topSuspect} was with me and acted weird, sus`,
+        `i literally ${mem.detail.toLowerCase()}, just saying`,
+        `${topSuspect} was not doing tasks when i was there`,
       ]
       return t[Math.floor(Math.random() * t.length)]
     }
     const t = [
-      `I think ${topSuspect} is suspicious, they were not doing tasks.`,
-      `${topSuspect} was alone when I passed through, watch them carefully.`,
-      `I do not fully trust ${topSuspect}, something feels wrong.`,
+      `${topSuspect} sus, where were you`,
+      `im not sure but ${topSuspect} was alone near there`,
+      `${topSuspect} can you explain yourself`,
     ]
     return t[Math.floor(Math.random() * t.length)]
   }
   const t = [
-    `I was just doing my tasks, I did not see anything suspicious.`,
-    `I have no information yet, we should hear from everyone first.`,
-    `I cannot say for sure, but we need to be careful voting wrong.`,
+    `i was doing tasks, i got nothing`,
+    `idk man, someone talk`,
+    `no clue, lets hear everyone`,
   ]
   return t[Math.floor(Math.random() * t.length)]
 }
 window.getAgentStatement = getAgentStatement
 
+// ============================================================
+// BUILD AGENT PROMPT  — context-driven, personality-accurate
+// ============================================================
 function buildAgentPrompt(agent, context, transcript) {
   const aliveNames = WORLD.agents
     .filter(a => a.alive && a.name !== agent.name)
     .map(a => a.name).join(', ')
 
+  // ── Game Facts: surface the most important situational info ──
+  const bodyVictim = context.bodyFound || 'someone'
+  const bodyRoom = (() => {
+    for (const room of Object.values(WORLD.rooms)) {
+      if (room.hasBody || room.bodyOf === bodyVictim) return room.name
+    }
+    return 'unknown location'
+  })()
+
+  // ── Memories: only what the agent actually witnessed ──
   const memories = agent.memory
-    .slice(0, 3)
+    .slice(0, 4)
     .map(m => `- ${m.detail}`)
-    .join('\n') || '- Nothing notable'
+    .join('\n') || '- nothing witnessed'
 
-  const topSuspect = agent.getTopSuspect()
+  // ── Top suspects from suspicion scores ──
+  const suspicionEntries = Object.entries(agent.suspicions)
+    .filter(([name]) => WORLD.agents.find(a => a.name === name && a.alive))
+    .sort((a, b) => b[1] - a[1])
+  const topSuspect = suspicionEntries[0]
+  const hasSuspicion = topSuspect && topSuspect[1] > 0
 
+  // ── Prior chat ──
   const priorChat = transcript.length > 0
-    ? transcript.map(t => `${t.name}: "${t.statement}"`).join('\n')
-    : 'You are speaking first.'
+    ? transcript.map(t => `${t.name}: ${t.statement}`).join('\n')
+    : '(you go first — react to the body being found)'
 
-  const roleInstruction = agent.role === 'impostor'
-    ? `You are secretly the IMPOSTOR. You killed someone.
-Lie convincingly. Blame an innocent crewmate.
-Sound calm, logical, and helpful. Never admit guilt.`
-    : `You are an innocent CREWMATE.
-Share what you observed. Be specific about locations and people.
-Your top suspect is: ${topSuspect?.[0] || 'unknown'}.`
+  // ── Personality-specific Among Us style guide ──
+  const p = agent.personality || { type: 'passive', trait: 'avoids conflict', voteStyle: 'follows crowd' }
+  let personalityStyle = ''
+  if (p.type === 'paranoid') {
+    personalityStyle = `You are jumpy and quick to accuse. Examples: "who called this? self report?", "saw [name] near [room] that's sketchy", "that timing is so sus"`
+  } else if (p.type === 'analytical') {
+    personalityStyle = `You reason from facts and locations. Examples: "body in ${bodyRoom}, who was near there?", "i saw [name] in [room] can anyone confirm?", "[name] has no alibi"`
+  } else if (p.type === 'social') {
+    personalityStyle = `You check in with others. Examples: "i vouch for [name]", "who are we voting?", "anyone see anything in ${bodyRoom}?", "skip?"`
+  } else if (p.type === 'deceptive') {
+    personalityStyle = `You sound calm and redirect suspicion. Examples: "was doing tasks the whole time", "saw [crewmate] heading towards [room]", "not me i was with [name]"`
+  } else if (p.type === 'passive') {
+    personalityStyle = `You say very little. Examples: "where?", "skip", "was doing tasks", "who found it?"`
+  } else if (p.type === 'aggressive') {
+    personalityStyle = `You accuse fast and push for votes. Examples: "[name] sus vote them", "why were you in ${bodyRoom}?", "[name] has been quiet this whole time"`
+  }
 
-  return `[INST] You are roleplaying as ${agent.name}, 
-a crew member on space station Void Station.
+  // ── Role instruction ──
+  let roleInstruction = ''
+  if (agent.role === 'impostor') {
+    const beingAccused = context.aliveAgents
+      .filter(a => a.name !== agent.name && (a.suspicions[agent.name] || 0) > 4).length >= 2
+    if (beingAccused) {
+      roleInstruction = `SECRET: You are the IMPOSTOR and people suspect you. Deny it — sound genuinely confused. Deflect by pointing at a crewmate based on what was said in chat.`
+    } else {
+      roleInstruction = `SECRET: You are the IMPOSTOR. Sound like an innocent crewmate. Subtly redirect suspicion onto one of the crewmates using facts from the chat or game.`
+    }
+  } else {
+    const suspectHint = hasSuspicion
+      ? `Based on what you witnessed, you lean towards suspecting ${topSuspect[0]}.`
+      : `You have no strong read yet — ask about the body location or who was near ${bodyRoom}.`
+    roleInstruction = `You are a crewmate. ${suspectHint} Only reference what is in YOUR WITNESSED EVENTS — do NOT invent rooms, names, or actions.`
+  }
 
-SITUATION: ${context.bodyFound || 'someone'} was found dead.
-YOUR PERSONALITY: ${agent.personality?.trait || 'neutral'}
-PEOPLE IN THIS MEETING: ${aliveNames}
+  // ── Anti-repetition: show last 2 chat lines as structures to avoid ──
+  const lastTwo = transcript.slice(-2).map(t => `"${t.statement.replace(/\[SUSPECT:[^\]]*\]/gi,'').trim()}"`).join('\n')
+  const avoidBlock = lastTwo ? `DO NOT copy or echo these sentence structures:\n${lastTwo}` : ''
 
-WHAT YOU REMEMBER:
+  // ── Suspect tag: must match whoever the message is about ──
+  const suspectHintForTag = hasSuspicion
+    ? `If your message mentions or accuses someone, end with [SUSPECT: that-same-person short-reason]. The name in [SUSPECT:] MUST be the person your message is about. Never tag someone you didn't mention.`
+    : `Only add [SUSPECT: NAME reason] if your message actually talks about that person being suspicious.`
+
+  return `AMONG US — Emergency Meeting. ${bodyVictim} was found dead in ${bodyRoom}.
+You are ${agent.name}. Players still alive: ${aliveNames}
+
+YOUR WITNESSED EVENTS (base your reply on these ONLY — do not invent anything):
 ${memories}
 
-WHAT OTHERS SAID ALREADY:
+WHAT OTHERS SAID SO FAR:
 ${priorChat}
 
-YOUR ROLE: ${roleInstruction}
+${roleInstruction}
 
-Rules: ONE sentence only. No quotation marks. 
-Do not start with your name. Be specific.
-Reference your memories if possible. [/INST]
+YOUR STYLE (${p.type}): ${personalityStyle}
+
+RULES:
+- Write ONE message, max 12 words, all lowercase.
+- Be SPECIFIC — mention a name, room, or action from your events or the chat above.
+- Do NOT use generic filler. Be direct, situational, and grounded in what you actually saw.
+- Do NOT repeat the wording or structure of any prior message. Write a completely different kind of sentence.
+- ${avoidBlock}
+- Do NOT end with "...". Vary endings: ?, !, period, or nothing.
+- Do NOT start with your own name.
+- ${suspectHintForTag}
+
 ${agent.name}:`
 }
 window.buildAgentPrompt = buildAgentPrompt
+
+// ============================================================
+// DISCUSSION SYSTEM
+// ============================================================
+async function displayChatMessage(agentName, message, fullText) {
+  const chatMessages = document.getElementById('chat-messages')
+  if (!chatMessages) return
+  
+  let msgEl = chatMessages.querySelector(`[data-speaker="${agentName}"]`)
+  if (!msgEl) {
+    msgEl = document.createElement('div')
+    msgEl.setAttribute('data-speaker', agentName)
+    msgEl.className = 'chat-message'
+    msgEl.style.cssText = `
+      margin: 8px 0;
+      padding: 8px 10px;
+      background: rgba(171,71,188,0.1);
+      border-left: 3px solid #ab47bc;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.4;
+    `
+    const speaker = document.createElement('span')
+    speaker.className = 'speaker'
+    speaker.style.cssText = 'color: #ab47bc; font-weight: bold; display: block; margin-bottom: 4px;'
+    speaker.textContent = `${agentName}:`
+    msgEl.appendChild(speaker)
+    
+    const text = document.createElement('span')
+    text.className = 'message-text'
+    msgEl.appendChild(text)
+    
+    chatMessages.appendChild(msgEl)
+  }
+  
+  const textSpan = msgEl.querySelector('.message-text')
+  if (textSpan) textSpan.textContent = message
+  
+  chatMessages.scrollTop = chatMessages.scrollHeight
+}
+
+function processAgentResponse(agentName, responseText, agentObj) {
+  const suspectPattern = /\[SUSPECT:\s*([A-Z]+)\s+(.+?)\]/gi
+  const deltas = {}
+  
+  let match
+  while ((match = suspectPattern.exec(responseText)) !== null) {
+    const targetName = match[1].toUpperCase()
+    const reason = match[2].trim()
+    
+    const targetAgent = WORLD.agents.find(a => a.name.toUpperCase() === targetName)
+    if (targetAgent && targetAgent.name !== agentName) {
+      let confidence = 2
+      if (reason.toLowerCase().includes('saw') || reason.toLowerCase().includes('witnessed')) confidence = 3
+      if (reason.toLowerCase().includes('very') || reason.toLowerCase().includes('definitely')) confidence = 3
+      
+      agentObj.raiseSuspicion(targetAgent.name, confidence)
+      deltas[targetAgent.name] = confidence
+      
+      WORLD.logEvent('meeting', `${agentName} suspects ${targetAgent.name} (+${confidence} → ${(agentObj.suspicions[targetAgent.name] || 0).toFixed(1)})`)
+    }
+  }
+  
+  return deltas
+}
+
+async function runDiscussion() {
+  const aliveAgents = WORLD.agents.filter(a => a.alive)
+  
+  for (let i = 0; i < aliveAgents.length; i++) {
+    const agent = aliveAgents[i]
+    const context = { aliveAgents, bodyFound: WORLD.bodyFound, tick: WORLD.gameTick }
+    
+    const typingIndicator = document.getElementById('typing-indicator')
+    if (typingIndicator) {
+      typingIndicator.style.display = 'block'
+      typingIndicator.innerHTML = `<span style="color:#4a6a7a;font-size:10px;">${agent.name} is typing...</span>`
+    }
+    
+    const prompt = buildAgentPrompt(agent, context, window.meetingTranscript || [])
+    let fullResponse = ''
+    
+    await new Promise(resolve => {
+      callLLMStream(prompt,
+        (chunk, fullText) => {
+          fullResponse = fullText
+          const displayText = fullText.replace(/\[SUSPECT:[^\]]*\]/gi, '').trim()
+          displayChatMessage(agent.name, displayText)
+        },
+        (finalText) => {
+          if (finalText) {
+            processAgentResponse(agent.name, finalText, agent)
+          }
+          
+          const cleanStatement = (finalText || '').replace(/\[SUSPECT:[^\]]*\]/gi, '').trim()
+          window.meetingTranscript.push({ name: agent.name, statement: cleanStatement })
+          
+          resolve()
+        }
+      )
+    })
+    
+    if (typingIndicator) typingIndicator.style.display = 'none'
+    
+    await sleep(600)
+  }
+  
+  WORLD.logEvent('meeting', 'Discussion complete — moving to vote')
+}
+
+// ============================================================
+// startChatLog — closes chat window after all responses, then votes
+// ============================================================
+async function startChatLog() {
+  const btn = document.getElementById('chat-log-btn')
+  if (btn) {
+    btn.disabled = true
+    btn.style.opacity = '0.5'
+    btn.style.cursor = 'not-allowed'
+    btn.textContent = '[ DISCUSSION IN PROGRESS ]'
+  }
+  
+  const stmtsEl = document.getElementById('meeting-statements')
+  const chatWindow = document.getElementById('chat-window')
+  if (stmtsEl) stmtsEl.style.display = 'none'
+  if (chatWindow) chatWindow.style.display = 'block'
+  
+  const status = document.getElementById('chat-log-status')
+  if (status) status.textContent = 'AGENTS DISCUSSING...'
+  
+  // Run discussion — one message per agent
+  await runDiscussion()
+  
+  // ── FIX: close chat, show "VOTING..." then hand off ──────
+  if (status) status.textContent = 'VOTING STARTING...'
+  if (btn) btn.style.display = 'none'
+
+  // Give the player a moment to read the last message
+  await sleep(1500)
+
+  // Hide chat window before voting UI takes over
+  if (chatWindow) chatWindow.style.display = 'none'
+
+  // Now proceed to voting — this resets/populates vote-tally
+  await proceedToVoting()
+}
+
+window.startChatLog = startChatLog
+window.runDiscussion = runDiscussion
+window.processAgentResponse = processAgentResponse
+window.displayChatMessage = displayChatMessage
 
 // ============================================================
 // VOTING
@@ -209,6 +444,11 @@ async function displayStatement(statement) {
 async function displayVoteTally(tally) {
   const voteTallyEl = document.getElementById('vote-tally')
   if (!voteTallyEl) return null
+
+  // ── FIX: ensure tally is visible before populating ──────
+  voteTallyEl.style.display = 'block'
+  voteTallyEl.innerHTML = ''
+
   const maxVotes = Math.max(...Object.values(tally), 1)
   Object.entries(tally).forEach(([name, count]) => {
     const item = document.createElement('div')
@@ -267,7 +507,115 @@ function ejectAgent(agentName) {
   document.dispatchEvent(new CustomEvent('agentDied', { detail: { agent, killer: null, room: 'meeting' } }))
 }
 
+async function proceedToVoting() {
+  try {
+    const aliveAgents = WORLD.agents.filter(a => a.alive)
+    const context = { aliveAgents, bodyFound: WORLD.bodyFound, tick: WORLD.gameTick }
+    
+    const overlay = document.getElementById('meeting-overlay')
+    const tallyEl = document.getElementById('vote-tally')
+    const resultEl = document.getElementById('meeting-result')
+    const chatWindow = document.getElementById('chat-window')
+    const status = document.getElementById('chat-log-status')
+    
+    // Clear and reset vote display
+    if (tallyEl) { tallyEl.innerHTML = ''; tallyEl.style.display = 'block' }
+    if (resultEl) resultEl.style.display = 'none'
+    
+    // Ensure chat is hidden, overlay is still showing
+    if (chatWindow) chatWindow.style.display = 'none'
+    if (status) status.textContent = ''
+    if (overlay) overlay.style.display = 'flex'   // ── FIX: keep overlay visible for tally
+    
+    WORLD.setPhase('voting')
+    await sleep(800)
+    
+    const votes = runMeetingVotes(aliveAgents, context)
+    const tally = {}
+    for (const v of votes) {
+      if (v.vote) tally[v.vote] = (tally[v.vote] || 0) + 1
+      WORLD.logEvent('vote', `${v.voter} → ${v.vote} (${v.reason})`)
+    }
+    
+    const ejectedName = await displayVoteTally(tally)
+    await sleep(3000)
+    if (ejectedName) { ejectAgent(ejectedName); await sleep(4000) }
+
+    const winner = WORLD.checkWinCondition()
+    if (winner) {
+      if (overlay) overlay.style.display = 'none'
+      window.meetingInProgress = false
+      if (window.endGame) endGame(winner)
+      return
+    }
+
+    await sleep(2000)
+    if (overlay) overlay.style.display = 'none'
+
+    WORLD.pendingMeeting = false
+    WORLD.bodyFound = null
+    WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
+
+    for (const room of Object.values(WORLD.rooms)) { room.hasBody = false; room.bodyOf = null }
+    for (const id of Object.keys(window.bodyMarkers || {})) {
+      if (window.scene) window.scene.remove(window.bodyMarkers[id])
+    }
+    window.bodyMarkers = {}
+    WORLD.setPhase('roaming')
+
+  } catch(err) {
+    console.error('[VOTING] Error:', err)
+    const overlay = document.getElementById('meeting-overlay')
+    if (overlay) overlay.style.display = 'none'
+    WORLD.pendingMeeting = false
+    WORLD.bodyFound = null
+    WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
+    if (WORLD.phase !== 'gameover') WORLD.setPhase('roaming')
+  } finally {
+    window.meetingInProgress = false
+  }
+}
+
+window.proceedToVoting = proceedToVoting
+
 async function triggerMeeting() {
+  // Reset meeting transcript
+  window.meetingTranscript = []
+
+  // Reset chat window completely
+  const chatMessages = document.getElementById('chat-messages')
+  if (chatMessages) chatMessages.innerHTML = ''
+
+  const typingIndicator = document.getElementById('typing-indicator')
+  if (typingIndicator) { 
+    typingIndicator.style.display = 'none'
+    typingIndicator.innerHTML = ''
+  }
+
+  // Re-enable and reset the chat log button
+  const btn = document.getElementById('chat-log-btn')
+  if (btn) {
+    btn.disabled = false
+    btn.style.opacity = '1'
+    btn.style.cursor = 'pointer'
+    btn.textContent = '[ CHAT LOG ]'
+    btn.style.display = 'block'
+  }
+
+  const status = document.getElementById('chat-log-status')
+  if (status) status.textContent = 'CLICK TO OPEN COMMUNICATION LINES'
+
+  // Hide chat window until button clicked
+  const chatWindow = document.getElementById('chat-window')
+  if (chatWindow) chatWindow.style.display = 'none'
+
+  // Clear vote tally and result from previous meeting
+  const tallyEl = document.getElementById('vote-tally')
+  if (tallyEl) tallyEl.innerHTML = ''
+
+  const resultEl = document.getElementById('meeting-result')
+  if (resultEl) resultEl.style.display = 'none'
+
   if (window.meetingInProgress) return
   if (WORLD.phase === 'gameover') return
   window.meetingInProgress = true
@@ -279,14 +627,14 @@ async function triggerMeeting() {
     const overlay     = document.getElementById('meeting-overlay')
     const reasonEl    = document.getElementById('meeting-reason')
     const stmtsEl     = document.getElementById('meeting-statements')
-    const tallyEl     = document.getElementById('vote-tally')
-    const resultEl    = document.getElementById('meeting-result')
-    if (stmtsEl)  stmtsEl.innerHTML = ''
-    if (tallyEl)  tallyEl.innerHTML = ''
-    if (resultEl) resultEl.style.display = 'none'
+    if (stmtsEl) {
+      stmtsEl.innerHTML = ''
+      stmtsEl.style.display = 'block'
+    }
     if (reasonEl) reasonEl.textContent = `Body found: ${WORLD.bodyFound || 'Unknown'}`
     if (overlay)  overlay.style.display = 'flex'
 
+    // PHASE 1: Quick initial statements
     WORLD.setPhase('discussion')
     const statements = aliveAgents.map(agent => ({ name: agent.name, statement: getAgentStatement(agent, context) }))
     for (const s of statements) {
@@ -294,41 +642,11 @@ async function triggerMeeting() {
       WORLD.logEvent('meeting', `${s.name}: "${s.statement.slice(0,50)}..."`)
       await sleep(500)
     }
-    await sleep(600)
-
-    WORLD.setPhase('voting')
-    const votes = runMeetingVotes(aliveAgents, context)
-    const tally = {}
-    for (const v of votes) {
-      if (v.vote) tally[v.vote] = (tally[v.vote] || 0) + 1
-      WORLD.logEvent('vote', `${v.voter} → ${v.vote} (${v.reason})`)
-    }
-    const ejectedName = await displayVoteTally(tally)
-    if (ejectedName) { ejectAgent(ejectedName); await sleep(1500) }
-
-    const winner = WORLD.checkWinCondition()
-    if (winner) {
-      if (overlay) overlay.style.display = 'none'
-      window.meetingInProgress = false
-      if (window.endGame) endGame(winner)
-      return
-    }
-
-    await sleep(1800)
-    if (overlay) overlay.style.display = 'none'
-
-    WORLD.pendingMeeting = false
-    WORLD.bodyFound = null
-    // ✅ KEY FIX: update lastKnownDeadCount AFTER meeting ends, not before
-    WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
-
-    for (const room of Object.values(WORLD.rooms)) { room.hasBody = false; room.bodyOf = null }
-    for (const id of Object.keys(window.bodyMarkers || {})) {
-      if (window.scene) window.scene.remove(window.bodyMarkers[id])
-    }
-    window.bodyMarkers = {}
-    WORLD.setPhase('roaming')
-
+    await sleep(1200)
+    
+    // PHASE 2: Wait for user to click CHAT LOG
+    // startChatLog() handles discussion + voting chain
+    
   } catch(err) {
     console.error('[MEETING] Error:', err)
     const overlay = document.getElementById('meeting-overlay')
@@ -337,10 +655,9 @@ async function triggerMeeting() {
     WORLD.bodyFound = null
     WORLD.lastKnownDeadCount = WORLD.agents.filter(a => !a.alive).length
     if (WORLD.phase !== 'gameover') WORLD.setPhase('roaming')
-  } finally {
-    window.meetingInProgress = false
   }
 }
+
 window.triggerMeeting = triggerMeeting
 
 // ============================================================
@@ -425,7 +742,7 @@ class WorldState {
     this.rooms={}; this.agents=[]; this.allAgents=[]
     this.gameTick=0; this.phase='idle'; this.winner=null; this.events=[]
     this.pendingMeeting=false; this.bodyFound=null
-    this.lastKnownDeadCount=0  // starts at 0 — first death (count=1 > 0) always triggers
+    this.lastKnownDeadCount=0
     this.initializeWorld()
     this.setupEventListeners()
   }
@@ -655,9 +972,6 @@ class WorldState {
     }
   }
 
-  // ============================================================
-  // MAIN TICK  — meeting fix is here
-  // ============================================================
   async tick() {
     if(this.phase==='meeting'||this.phase==='voting'||this.phase==='discussion'||this.phase==='gameover') return
     if(window.meetingInProgress) return
@@ -666,27 +980,22 @@ class WorldState {
     this.agents.filter(a=>a.role==='impostor'&&a.alive).forEach(imp=>{ if(imp.killCooldown>0) imp.killCooldown-- })
     this.agents.filter(a=>a.alive).forEach(a=>this.moveAgent(a))
     this.processTasks()
-    this.processKills()           // may set pendingMeeting=true & increment dead count
+    this.processKills()
     this.updatePerception()
     this.updateSuspicions()
     this.updateSuspicionVisuals()
 
-    // ✅ FIX: Trigger meeting on ANY death increase, not just when pendingMeeting flag is set
     const currentDeadCount = this.agents.filter(a=>!a.alive).length
     if(currentDeadCount > this.lastKnownDeadCount && !window.meetingInProgress && this.phase === 'roaming') {
-      // Set bodyFound if not already set (for deaths outside processKills)
       if(!this.bodyFound) {
-        // Find the most recently dead agent
         const deadAgents = this.agents.filter(a => !a.alive)
         if(deadAgents.length > 0) {
           this.bodyFound = deadAgents[deadAgents.length - 1].name
         }
       }
-      // check win first (impostor might have won by equalising)
       const winnerPre = this.checkWinCondition()
       if(winnerPre) { if(window.endGame) endGame(winnerPre); return }
       await triggerMeeting()
-      // after meeting, check win again (ejection might have ended the game)
       const winnerPost = this.checkWinCondition()
       if(winnerPost) { if(window.endGame) endGame(winnerPost); return }
       return

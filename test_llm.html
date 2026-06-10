@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Test</title>
+</head>
+<body>
+    <h1>LLM Connection Test</h1>
+    <button onclick="testLLM()">Test LLM Connection</button>
+    <div id="result"></div>
+
+    <script>
+        async function testLLM() {
+            const result = document.getElementById('result');
+            result.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:11434/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'llama3',
+                        prompt: 'Hello',
+                        stream: false
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.innerHTML = `
+                    <h3>Success!</h3>
+                    <p><strong>Response:</strong> ${data.response}</p>
+                    <p><strong>Model:</strong> ${data.model}</p>
+                    <p><strong>Done:</strong> ${data.done}</p>
+                `;
+            } catch (error) {
+                result.innerHTML = `
+                    <h3>Error:</h3>
+                    <p>${error.message}</p>
+                    <p>Make sure Ollama is running and llama3 model is installed.</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

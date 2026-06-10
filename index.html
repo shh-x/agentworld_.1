@@ -413,6 +413,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+        <script src="world.js"></script>
     <script src="worldstate.js"></script>
     <script>
     // ============================================================
@@ -942,101 +943,186 @@
     }
 
     // CHAT LOG FUNCTIONALITY
-    window.startChatLog = function() {
-        const chatWindow = document.getElementById('chat-window')
-        const chatMessages = document.getElementById('chat-messages')
-        const typingIndicator = document.getElementById('typing-indicator')
-        const chatStatus = document.getElementById('chat-log-status')
-        const chatBtn = document.getElementById('chat-log-btn')
+    let meetingTranscript = []
+
+    async function startChatLog() {
+      // Disable button immediately — prevent double trigger
+      const btn = document.getElementById('chat-log-btn')
+      const status = document.getElementById('chat-log-status')
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed' }
+      if (status) status.textContent = 'OPENING COMMUNICATION LINES...'
+
+      // Hide initial statements and show chat window
+      const stmtsEl = document.getElementById('meeting-statements')
+      if (stmtsEl) stmtsEl.style.display = 'none'
+      const chatWindow = document.getElementById('chat-window')
+      if (chatWindow) chatWindow.style.display = 'block'
+
+      // Clear transcript for this meeting
+      meetingTranscript = []
+
+      const aliveAgents = WORLD.agents.filter(a => a.alive)
+      const context = {
+        aliveAgents,
+        bodyFound: WORLD.bodyFound,
+      }
+
+      if (status) status.textContent = `AGENTS ONLINE: ${aliveAgents.length}` 
+
+      // Run each agent SEQUENTIALLY — one at a time
+      for (let i = 0; i < aliveAgents.length; i++) {
+        const agent = aliveAgents[i]
+
+        // Show typing indicator
+        showTypingIndicator(agent)
+        if (status) status.textContent = `${agent.name} IS SPEAKING... (${i+1}/${aliveAgents.length})` 
+
+        // Pause before each agent speaks — feels natural
+        await sleep(1000) // 1 second before speaking
+
+        // Debug agent properties
+        console.log('Agent:', agent.name, 'Color:', agent.color, 'Role:', agent.role)
         
-        // Show chat window, hide statements
-        chatWindow.style.display = 'block'
-        document.getElementById('meeting-statements').style.display = 'none'
-        
-        // Clear previous messages
-        chatMessages.innerHTML = ''
-        chatStatus.textContent = 'Starting chat log...'
-        chatBtn.disabled = true
-        
-        // Get meeting context
-        const context = {
-            bodyFound: window.WORLD?.bodyFound || 'someone'
-        }
-        
-        // Get alive agents for chat
-        const aliveAgents = window.WORLD?.agents?.filter(a => a.alive) || []
-        const transcript = []
-        
-        // Start chat with first agent
-        let agentIndex = 0
-        
-        function nextAgent() {
-            if (agentIndex >= aliveAgents.length) {
-                // Chat complete
-                chatStatus.textContent = 'Chat complete'
-                chatBtn.disabled = false
-                chatBtn.textContent = '[ VIEW SUMMARY ]'
-                
-                // Show original statements after delay
-                setTimeout(() => {
-                    chatWindow.style.display = 'none'
-                    document.getElementById('meeting-statements').style.display = 'block'
-                }, 2000)
-                return
+        // Render empty bubble that will fill via streaming
+        const { textEl } = renderChatMessage(agent, '', true)
+        console.log('Chat bubble created, textEl:', textEl ? 'found' : 'null')
+
+        // Build prompt with full context + prior transcript
+        const prompt = buildAgentPrompt(agent, context, meetingTranscript)
+        console.log('Generated prompt length:', prompt.length)
+
+        let fullStatement = ''
+
+        // Check if LLM functions are available
+        if (!window.callLLMStream) {
+          console.error('callLLMStream not available')
+          fullStatement = getFallbackStatement(agent)
+        } else if (!window.buildAgentPrompt) {
+          console.error('buildAgentPrompt not available')
+          fullStatement = getFallbackStatement(agent)
+        } else {
+          // Stream response word by word into bubble
+          try {
+            await callLLMStream(
+              prompt,
+              (chunk, full) => {
+                // onChunk: update bubble text as words arrive
+                console.log('onChunk called - chunk:', chunk, 'full:', full)
+                fullStatement = full
+                if (textEl) {
+                  console.log('Updating textEl with:', full)
+                  textEl.textContent = full
+                  const msgs = document.getElementById('chat-messages')
+                  if (msgs) msgs.scrollTop = msgs.scrollHeight
+                } else {
+                  console.log('textEl is null, cannot update')
+                }
+              },
+              (finalText) => {
+                // onDone: clean up final text
+                console.log('onDone called with:', finalText)
+                fullStatement = finalText || getFallbackStatement(agent)
+                if (textEl) textEl.textContent = fullStatement
+              }
+            )
+            
+            // Wait a bit to see if streaming works
+            await sleep(2000)
+            
+            // If still no response after 2 seconds, use fallback
+            if (!fullStatement) {
+              console.log('LLM timeout - using fallback')
+              fullStatement = getFallbackStatement(agent)
+              if (textEl) textEl.textContent = fullStatement
             }
-            
-            const agent = aliveAgents[agentIndex]
-            typingIndicator.textContent = `${agent.name} is typing...`
-            typingIndicator.style.display = 'block'
-            
-            // Build prompt for this agent
-            const prompt = window.buildAgentPrompt ? 
-                window.buildAgentPrompt(agent, context, transcript) : 
-                `${agent.name}: What do you think about the situation?`
-            
-            // Use streaming LLM if available, otherwise fallback
-            if (window.callLLMStream) {
-                let currentMessage = ''
-                const messageDiv = document.createElement('div')
-                messageDiv.style.cssText = 'margin: 8px 0; padding: 8px; background: rgba(0,229,255,0.05); border-left: 2px solid #00e5ff; border-radius: 2px;'
-                messageDiv.innerHTML = `<strong style="color: #00e5ff">${agent.name}:</strong> `
-                chatMessages.appendChild(messageDiv)
-                chatMessages.scrollTop = chatMessages.scrollHeight
-                
-                window.callLLMStream(prompt, 
-                    (chunk, fullText) => {
-                        currentMessage = fullText
-                        messageDiv.innerHTML = `<strong style="color: #00e5ff">${agent.name}:</strong> ${currentMessage}`
-                        chatMessages.scrollTop = chatMessages.scrollHeight
-                    },
-                    (fullText) => {
-                        typingIndicator.style.display = 'none'
-                        transcript.push({ name: agent.name, statement: fullText })
-                        agentIndex++
-                        setTimeout(nextAgent, 1000) // Brief pause between agents
-                    }
-                )
-            } else {
-                // Fallback to non-streaming
-                window.callLLM(prompt).then(response => {
-                    typingIndicator.style.display = 'none'
-                    if (response) {
-                        const messageDiv = document.createElement('div')
-                        messageDiv.style.cssText = 'margin: 8px 0; padding: 8px; background: rgba(0,229,255,0.05); border-left: 2px solid #00e5ff; border-radius: 2px;'
-                        messageDiv.innerHTML = `<strong style="color: #00e5ff">${agent.name}:</strong> ${response}`
-                        chatMessages.appendChild(messageDiv)
-                        transcript.push({ name: agent.name, statement: response })
-                        chatMessages.scrollTop = chatMessages.scrollHeight
-                    }
-                    agentIndex++
-                    setTimeout(nextAgent, 1000)
-                })
-            }
+          } catch (error) {
+            console.error('LLM Stream error:', error)
+            fullStatement = getFallbackStatement(agent)
+            if (textEl) textEl.textContent = fullStatement
+          }
         }
-        
-        // Start the chat
-        setTimeout(nextAgent, 500)
+
+        // If LLM failed use fallback
+        if (!fullStatement) {
+          fullStatement = getFallbackStatement(agent)
+          if (textEl) textEl.textContent = fullStatement
+        }
+
+        // Add to transcript
+        meetingTranscript.push({ name: agent.name, agent, statement: fullStatement })
+        WORLD.logEvent('meeting', `${agent.name}: "${fullStatement.slice(0,50)}..."`)
+
+        // Longer pause between agents for readability
+        hideTypingIndicator()
+        await sleep(2000) // 2 seconds between agents
+      }
+
+      // All agents have spoken — pause before voting
+      if (status) status.textContent = 'DISCUSSION COMPLETE — VOTING BEGINS'
+      await sleep(3000) // 3 seconds before voting starts
+
+      // Trigger vote phase using transcript as source of truth
+      await runVotePhaseFromTranscript(meetingTranscript, context)
     }
+
+    function getFallbackStatement(agent) {
+      const fallbacks = agent.role === 'impostor' ? [
+        "I was just doing my tasks, I saw nothing suspicious.",
+        "Someone is trying to frame me, I'm innocent.",
+        "We need to look at who's been acting strange lately."
+      ] : [
+        "I was working alone in my section.",
+        "I heard some noises but didn't see anything.",
+        "We need to be careful about who we vote out."
+      ]
+      return fallbacks[Math.floor(Math.random() * fallbacks.length)]
+    }
+
+    async function runVotePhaseFromTranscript(transcript, context) {
+      // For now, just show the transcript and trigger existing voting logic
+      const statementsDiv = document.getElementById('meeting-statements')
+      if (statementsDiv) {
+        statementsDiv.innerHTML = transcript.map(t => 
+          `<div style="margin: 8px 0; padding: 8px; background: rgba(0,229,255,0.05); border-left: 2px solid #00e5ff; border-radius: 2px;">
+            <strong style="color: #00e5ff">${t.name}:</strong> ${t.statement}
+          </div>`
+        ).join('')
+      }
+      
+      // Hide chat window and show statements
+      document.getElementById('chat-window').style.display = 'none'
+      if (statementsDiv) statementsDiv.style.display = 'block'
+      
+      // Process responses to update suspicions
+      if (window.processAgentResponse) {
+        for (const t of transcript) {
+          window.processAgentResponse(t.name, t.statement, t.agent)
+        }
+      }
+
+      // Hide the chat log button and update status
+      const btn = document.getElementById('chat-log-btn')
+      const status = document.getElementById('chat-log-status')
+      if (btn) { 
+        btn.style.display = 'none'
+      }
+      if (status) status.textContent = 'VOTING IN PROGRESS...'
+
+      // Give player a short time to read the statements
+      await sleep(2500)
+
+      // Start voting logic
+      if (window.proceedToVoting) {
+        await window.proceedToVoting()
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms))
+    }
+
+    window.startChatLog = startChatLog
+    window.meetingTranscript = meetingTranscript
 
     // CHAT MESSAGE RENDERING
     function renderChatMessage(agent, text, isStreaming) {
@@ -1116,6 +1202,51 @@
     }
 
     window.renderChatMessage = renderChatMessage
+
+    // TYPING INDICATOR FUNCTIONS
+    function showTypingIndicator(agent) {
+      const indicator = document.getElementById('typing-indicator')
+      if (!indicator) return
+      indicator.style.display = 'block'
+      indicator.innerHTML = `
+        <span style="color:${agent.color}">${agent.name}</span>
+        <span style="color:#2a4a5a"> is thinking</span>
+        <span class="typing-dots">
+          <span>.</span><span>.</span><span>.</span>
+        </span>
+      `
+    }
+
+    function hideTypingIndicator() {
+      const indicator = document.getElementById('typing-indicator')
+      if (indicator) indicator.style.display = 'none'
+    }
+
+    // Add CSS for animated dots:
+    const style = document.createElement('style')
+    style.textContent = `
+      .typing-dots span {
+        animation: typingBlink 1.2s infinite;
+        opacity: 0;
+      }
+      .typing-dots span:nth-child(1) { animation-delay: 0s }
+      .typing-dots span:nth-child(2) { animation-delay: 0.2s }
+      .typing-dots span:nth-child(3) { animation-delay: 0.4s }
+
+      @keyframes typingBlink {
+        0%, 80%, 100% { opacity: 0 }
+        40% { opacity: 1 }
+      }
+
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(8px) }
+        to   { opacity: 1; transform: translateY(0) }
+      }
+    `
+    document.head.appendChild(style)
+
+    window.showTypingIndicator = showTypingIndicator
+    window.hideTypingIndicator = hideTypingIndicator
 
     // ============================================================
     // END GAME
