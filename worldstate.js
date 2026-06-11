@@ -199,18 +199,38 @@ function buildAgentPrompt(agent, context, transcript) {
   // ── Role instruction ──
   let roleInstruction = ''
   if (agent.role === 'impostor') {
-    const beingAccused = context.aliveAgents
-      .filter(a => a.name !== agent.name && (a.suspicions[agent.name] || 0) > 4).length >= 2
-    if (beingAccused) {
-      roleInstruction = `SECRET: You are the IMPOSTOR and people suspect you. Deny it — sound genuinely confused. Deflect by pointing at a crewmate based on what was said in chat.`
+    const accusers = context.aliveAgents
+      .filter(a => a.name !== agent.name && (a.suspicions[agent.name] || 0) > 4)
+    const accuserNames = accusers.map(a => a.name).join(', ') || null
+
+    if (accuserNames) {
+      roleInstruction = `SECRET ROLE: IMPOSTOR. You are being accused. DO NOT confirm. 
+      Pick ONE name from chat and say they were in the same room as the body. 
+      Sound confused, not defensive. Max 10 words. All lowercase.`
     } else {
-      roleInstruction = `SECRET: You are the IMPOSTOR. Sound like an innocent crewmate. Subtly redirect suspicion onto one of the crewmates using facts from the chat or game.`
+      const crewTarget = context.aliveAgents
+        .filter(a => a.role !== 'impostor' && a.name !== agent.name)
+      const deflect = crewTarget[Math.floor(Math.random() * crewTarget.length)]?.name || 'someone'
+      roleInstruction = `SECRET ROLE: IMPOSTOR. You are innocent-seeming. 
+      Mention ${deflect} was near ${bodyRoom} when you passed through. 
+      Do NOT admit anything. Sound helpful. Max 10 words. All lowercase.`
     }
   } else {
-    const suspectHint = hasSuspicion
-      ? `Based on what you witnessed, you lean towards suspecting ${topSuspect[0]}.`
-      : `You have no strong read yet — ask about the body location or who was near ${bodyRoom}.`
-    roleInstruction = `You are a crewmate. ${suspectHint} Only reference what is in YOUR WITNESSED EVENTS — do NOT invent rooms, names, or actions.`
+    // 30% chance crewmate mis-remembers or deflects to wrong person
+    const blunder = Math.random() < 0.3
+    if (blunder) {
+      const randomTarget = context.aliveAgents.filter(a => a.name !== agent.name)
+      const wrongPerson = randomTarget[Math.floor(Math.random() * randomTarget.length)]?.name
+      roleInstruction = `You are a crewmate. You are not sure what happened.
+      You vaguely think ${wrongPerson} was near the area but you're not certain. 
+      Sound unsure. Only reference your WITNESSED EVENTS. Max 10 words. All lowercase.`
+    } else {
+      const suspectHint = hasSuspicion
+        ? `You lean toward suspecting ${topSuspect[0]} based on what you saw.` 
+        : `You have no strong read — ask who was near ${bodyRoom}.` 
+      roleInstruction = `You are a crewmate. ${suspectHint}
+      Only reference YOUR WITNESSED EVENTS. Do NOT invent locations or names. Max 10 words. All lowercase.`
+    }
   }
 
   // ── Anti-repetition: show last 2 chat lines as structures to avoid ──
@@ -408,10 +428,29 @@ function getAgentVote(agent, context) {
   const validAgents = context.aliveAgents.filter(a => a.name !== agent.name)
   if (validAgents.length === 0) return { vote: null, reason: 'nobody to vote' }
   if (agent.role === 'impostor') {
-    const threat = validAgents.filter(a => a.role === 'crewmate')
-      .sort((a, b) => (b.suspicions[agent.name]||0) - (a.suspicions[agent.name]||0))[0]
-    const vote = threat || validAgents[0]
-    return { vote: vote.name, reason: 'they seem most suspicious to me' }
+    const crewmates = validAgents.filter(a => a.role === 'crewmate')
+
+    // 20% chance: skip vote (looks cooperative, deflects attention)
+    if (Math.random() < 0.2) return { vote: null, reason: 'skipping to appear calm' }
+
+    // Vote out whoever has the highest suspicion ON THE IMPOSTOR
+    // (eliminate the threat before they vote you out)
+    const threat = crewmates
+      .filter(a => (a.suspicions[agent.name] || 0) > 3)
+      .sort((a, b) => (b.suspicions[agent.name] || 0) - (a.suspicions[agent.name] || 0))[0]
+
+    if (threat) return { vote: threat.name, reason: 'eliminating highest threat' }
+
+    // Otherwise vote whoever has highest average suspicion from others
+    // (blend in with the crowd, seem like a real crewmate)
+    const crowdTarget = [...crewmates]
+      .sort((a, b) => {
+        const avgA = Object.values(a.suspicions).reduce((s, v) => s + v, 0)
+        const avgB = Object.values(b.suspicions).reduce((s, v) => s + v, 0)
+        return avgB - avgA
+      })[0]
+
+    return { vote: crowdTarget?.name || crewmates[0]?.name, reason: 'blending with crowd vote' }
   }
   const sorted = [...validAgents].sort((a,b) => (agent.suspicions[b.name]||0) - (agent.suspicions[a.name]||0))
   const top    = sorted[0]
@@ -860,7 +899,10 @@ class WorldState {
         agent.isMoving=true
       }
     }
-    if(agent.path.length===0) agent.idleUntil=this.gameTick+Math.floor(Math.random()*3)+2
+    if(agent.path.length===0) {
+      // Human-like pause: 3–8 ticks between destinations (at 1tick/sec = 3–8 seconds)
+      agent.idleUntil=this.gameTick+Math.floor(Math.random()*5)+3
+    }
   }
 
   processTasks() {
@@ -895,7 +937,19 @@ class WorldState {
   processKills() {
     for(const imp of this.agents.filter(a=>a.role==='impostor'&&a.alive)) {
       if(imp.killCooldown>0) continue
-      const targets=this.getAgentsInRoom(imp.currentRoom).filter(a=>a.role==='crewmate'&&a.alive)
+      const roomAgents=this.getAgentsInRoom(imp.currentRoom)
+      const witnesses=roomAgents.filter(a=>a.alive&&a.id!==imp.id)
+
+      // Don't kill if more than 1 other person in the room
+      if(witnesses.length>1) continue
+
+      // Don't kill if adjacent rooms have agents with line-of-sight
+      const adjacentWatchers=this.getAdjacentRooms(imp.currentRoom)
+        .flatMap(rId=>this.getAgentsInRoom(rId))
+        .filter(a=>a.alive)
+      if(adjacentWatchers.length>=2) continue
+
+      const targets=witnesses.filter(a=>a.role==='crewmate')
       if(targets.length===0) continue
       const victim=targets[Math.floor(Math.random()*targets.length)]
       victim.alive=false; imp.killCooldown=45
@@ -937,6 +991,11 @@ class WorldState {
       }
       for(const name of Object.keys(agent.suspicions)) agent.suspicions[name]=Math.min(10,agent.suspicions[name])
     }
+    for(const agent of this.agents.filter(a=>a.alive)) {
+      for(const name of Object.keys(agent.suspicions)) {
+        agent.suspicions[name]=Math.max(0,agent.suspicions[name]-0.02)
+      }
+    }
   }
 
   updatePerception() {
@@ -947,8 +1006,10 @@ class WorldState {
           if(other.id===agent.id) continue
           if(roomId===agent.currentRoom)
             agent.addMemory({tick:this.gameTick,type:'saw',subject:other.name,detail:`saw ${other.name} in ${this.getRoom(roomId).name}`})
-          if(other.currentTask&&other.currentTask.roomId===roomId)
-            agent.suspicions[other.name]=Math.max(0,(agent.suspicions[other.name]||0)-0.3)
+          if(other.currentTask&&other.currentTask.roomId===roomId) {
+            const reduction=other.currentTask.isFake?-0.6:-0.3
+            agent.suspicions[other.name]=Math.max(0,(agent.suspicions[other.name]||0)+reduction)
+          }
         }
         if(this.getRoom(roomId)?.hasBody)
           agent.addMemory({tick:this.gameTick,type:'body',detail:`found body of ${this.getRoom(roomId).bodyOf} in ${this.getRoom(roomId).name}`})
@@ -1011,10 +1072,10 @@ class WorldState {
   initializeTasks() {
     Object.values(this.rooms).forEach(r=>{ r.tasks=[] })
     const taskDefs = {
-      cafeteria:{name:'Fix Wiring',secs:5}, reactor:{name:'Start Reactor',secs:8},
-      medbay:{name:'Submit Scan',secs:4}, security:{name:'Check Cameras',secs:4},
-      electrical:{name:'Reset Breakers',secs:6}, storage:{name:'Fuel Engines',secs:5},
-      admin:{name:'Swipe Card',secs:3}
+      cafeteria:{name:'Fix Wiring',secs:12}, reactor:{name:'Start Reactor',secs:18},
+      medbay:{name:'Submit Scan',secs:10}, security:{name:'Check Cameras',secs:10},
+      electrical:{name:'Reset Breakers',secs:15}, storage:{name:'Fuel Engines',secs:12},
+      admin:{name:'Swipe Card',secs:8}
     }
     const impostorCount=window.GAME_CONFIG?.IMPOSTOR_COUNT??1
     const tasksPerAgent=window.GAME_CONFIG?.TASKS_PER_AGENT??5
