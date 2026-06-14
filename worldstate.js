@@ -828,7 +828,14 @@ class WorldState {
       const role = impostorIndices.includes(index) ? 'impostor' : 'crewmate'
       const agent = new AgentState(index, data.name, data.color, role, 'cafeteria')
       agent.personality = PERSONALITIES[data.name]
-      agent.isPlayer = false
+      agent.isPlayer = (
+        window.GAME_CONFIG?.mode === 'demo' &&
+        data.name === window.GAME_CONFIG?.playerName
+      )
+      if (agent.isPlayer) {
+        window.GAME_CONFIG.playerRole = role
+        window.playerAgent = agent
+      }
       if (role === 'crewmate') this.assignTasksToAgent(agent, tasksPerAgent)
       else { this.assignFakeTasksToAgent(agent, tasksPerAgent); agent.killCooldown = 15 }
       this.agents.push(agent)

@@ -688,7 +688,41 @@
 <body>
     <div id="canvas-container"></div>
 
+    <div id="mode-select-screen" style="
+        position:fixed;
+        inset:0;
+        z-index:3000;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:rgba(0,0,0,0.94);
+        font-family:'Share Tech Mono',monospace;
+        color:#e8f7ff;
+    ">
+        <div style="
+            width:min(460px,90vw);
+            border:1px solid #00e5ff;
+            background:rgba(5,10,20,0.96);
+            box-shadow:0 0 36px rgba(0,229,255,0.22);
+            padding:28px;
+            text-align:center;
+        ">
+            <h2 style="margin:0 0 20px;color:#00e5ff;letter-spacing:3px;">Choose Mode</h2>
 
+            <button id="btn-ai-mode" class="control-btn" onclick="startGame('ai')" style="width:100%;margin:0 0 12px;">
+                AI Mode - watch all agents play
+            </button>
+
+            <button id="btn-demo-mode" class="control-btn" onclick="startGame('demo')" style="width:100%;margin:0 0 14px;">
+                Demo Mode - play as one agent
+            </button>
+
+            <div id="avatar-picker" style="display:none">
+                <p style="margin:10px 0;color:#8ab4c4;font-size:12px;letter-spacing:2px;">Pick your avatar:</p>
+                <div id="avatar-picker-buttons" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- TOP BAR -->
     <div id="top-bar" class="hud-panel">
@@ -1005,7 +1039,56 @@
 
         buildRooms()
 
+        const roomRaycaster = new THREE.Raycaster()
+        const roomPointer = new THREE.Vector2()
+        let playerControlsReady = false
 
+        function getRoomIdFromClick(e) {
+            const rect = renderer.domElement.getBoundingClientRect()
+            roomPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+            roomPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+            roomRaycaster.setFromCamera(roomPointer, camera)
+            const hits = roomRaycaster.intersectObjects(roomMeshes.map(r => r.platform), false)
+            if (!hits.length) return null
+            const hit = roomMeshes.find(r => r.platform === hits[0].object)
+            return hit?.id || null
+        }
+
+        function sendPlayerToRoom(roomId) {
+            if (window.GAME_CONFIG?.mode !== 'demo') return
+            const player = window.playerAgent
+            if (!roomId || !player || !player.alive || !window.WORLD) return
+            const path = window.WORLD.findPath(player.currentRoom, roomId)
+            if (!path || path.length <= 1) return
+            player.path = path.slice(1)
+            player.isBusy = false
+            player.currentTask = null
+            player.taskProgress = 0
+            player.idleUntil = 0
+            if (window.hideAgentProgressBar) window.hideAgentProgressBar(player.id)
+        }
+
+        function setupPlayerControls() {
+            if (playerControlsReady) return
+            playerControlsReady = true
+            document.getElementById('game-canvas').addEventListener('click', e => {
+                if (window.GAME_CONFIG?.mode !== 'demo') return
+                sendPlayerToRoom(getRoomIdFromClick(e))
+            })
+
+            document.addEventListener('keydown', e => {
+                if (window.GAME_CONFIG?.mode !== 'demo' || !window.playerAgent || !window.WORLD) return
+                if (window.WORLD.phase === 'meeting' || window.WORLD.phase === 'discussion' || window.WORLD.phase === 'voting') return
+                const adj = window.WORLD.getAdjacentRooms(window.playerAgent.currentRoom)
+                const map = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 }
+                if (e.key in map && adj[map[e.key]]) {
+                    e.preventDefault()
+                    sendPlayerToRoom(adj[map[e.key]])
+                }
+            })
+        }
+        window.setupPlayerControls = setupPlayerControls
+        window.getRoomIdFromClick = getRoomIdFromClick
 
         // ============================================================
         // AGENT MESHES
@@ -1327,25 +1410,54 @@
         }
         window.startGameLoop = startTickLoop
 
-        function startGame() {
-            if (!window.WORLD) return
-            window.GAME_CONFIG.mode = 'ai'
-            window.GAME_CONFIG.playerName = 'NOVA'
-            window.GAME_CONFIG.playerRole = null
-            window.playerAgent = null
+        function renderAvatarPicker() {
+            const picker = document.getElementById('avatar-picker-buttons')
+            if (!picker || !window.AGENT_ROSTER) return
+            picker.innerHTML = ''
+            window.AGENT_ROSTER.forEach(agent => {
+                const btn = document.createElement('button')
+                btn.className = 'control-btn'
+                btn.textContent = agent.name
+                btn.style.margin = '0'
+                btn.style.borderColor = agent.color
+                btn.style.color = agent.color
+                btn.onclick = () => startGame('demo', agent.name)
+                picker.appendChild(btn)
+            })
+        }
 
+        function startGame(mode, playerName = null) {
+            if (!window.WORLD) return
+            window.GAME_CONFIG.mode = mode
+            if (mode === 'demo' && !playerName) {
+                renderAvatarPicker()
+                const picker = document.getElementById('avatar-picker')
+                if (picker) picker.style.display = 'block'
+                return
+            }
+            if (mode === 'demo') window.GAME_CONFIG.playerName = playerName
+            else {
+                window.GAME_CONFIG.playerName = 'NOVA'
+                window.GAME_CONFIG.playerRole = null
+                window.playerAgent = null
+            }
+
+            const modeScreen = document.getElementById('mode-select-screen')
+            if (modeScreen) modeScreen.style.display = 'none'
             if (window.WORLD.agents.length === 0) window.WORLD.spawnAgents()
+            if (mode === 'demo' && window.setupPlayerControls) window.setupPlayerControls()
             isPaused = false
             window.WORLD.setPhase('roaming')
             startTickLoop()
-            addLog(`Simulation started (AI mode)`, 'system')
+            addLog(`Simulation started (${mode.toUpperCase()} mode)`, 'system')
             document.getElementById('start-btn').disabled = true
         }
         window.startGame = startGame
 
         // START
         document.getElementById('start-btn').addEventListener('click', () => {
-            startGame()
+            const modeScreen = document.getElementById('mode-select-screen')
+            if (modeScreen) modeScreen.style.display = 'flex'
         })
 
         // PAUSE
@@ -1812,7 +1924,10 @@
             document.getElementById('gameover-overlay').style.display = 'none'
             document.getElementById('pause-btn').textContent = '⏸ PAUSE'
             document.getElementById('start-btn').disabled = false
-
+            const modeScreen = document.getElementById('mode-select-screen')
+            const avatarPicker = document.getElementById('avatar-picker')
+            if (modeScreen) modeScreen.style.display = 'flex'
+            if (avatarPicker) avatarPicker.style.display = 'none'
 
             WORLD.updateAgentPanel()
             WORLD.updateTaskHUD()
