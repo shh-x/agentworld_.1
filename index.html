@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Simulation - Space Station</title>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap"
+        rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             overflow: hidden;
@@ -15,7 +21,11 @@
             color: #8ab4c4;
         }
 
-        #canvas-container { position: fixed; inset: 0; z-index: 1; }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+        }
 
         .hud-panel {
             position: fixed;
@@ -27,241 +37,658 @@
         }
 
         #top-bar {
-            top: 0; left: 0; right: 0; height: 48px;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 16px; border-bottom: 1px solid #0d2a3a;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            border-bottom: 1px solid #0d2a3a;
         }
 
         #bottom-bar {
-            bottom: 0; left: 0; right: 0; height: 36px;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 16px; border-top: 1px solid #0d2a3a; gap: 12px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            border-top: 1px solid #0d2a3a;
+            gap: 12px;
         }
 
         #left-panel {
-            top: 48px; left: 0; width: 220px; bottom: 36px;
-            border-right: 1px solid #0d2a3a; overflow-y: auto;
+            top: 48px;
+            left: 0;
+            width: 220px;
+            bottom: 36px;
+            border-right: 1px solid #0d2a3a;
+            overflow-y: auto;
         }
 
         #right-panel {
-            top: 48px; right: 0; width: 240px; bottom: 36px;
+            top: 48px;
+            right: 0;
+            width: 240px;
+            bottom: 36px;
             border-left: 1px solid #0d2a3a;
         }
 
         .station-title {
-            font-family: 'Orbitron', monospace; font-weight: 900; font-size: 16px;
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            font-size: 16px;
             color: #00e5ff;
-            text-shadow: 0 0 10px rgba(0,229,255,0.8), 0 0 20px rgba(0,229,255,0.4);
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.8), 0 0 20px rgba(0, 229, 255, 0.4);
             letter-spacing: 2px;
         }
 
         .phase-pill {
-            padding: 4px 12px; border-radius: 16px;
-            font-family: 'Share Tech Mono', monospace; font-weight: bold;
-            font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-family: 'Share Tech Mono', monospace;
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             transition: all 0.3s ease;
         }
-        .phase-pill.roaming    { background: #00e5ff; color: #050a14; }
-        .phase-pill.meeting    { background: #cc88ff; color: #050a14; }
-        .phase-pill.discussion { background: #cc88ff; color: #050a14; }
-        .phase-pill.voting     { background: #ffcc00; color: #050a14; }
-        .phase-pill.gameover   { background: #ff4444; color: #050a14; }
 
-        .stat-chips { display: flex; gap: 8px; font-size: 10px; }
+        .phase-pill.roaming {
+            background: #00e5ff;
+            color: #050a14;
+        }
+
+        .phase-pill.meeting {
+            background: #cc88ff;
+            color: #050a14;
+        }
+
+        .phase-pill.discussion {
+            background: #cc88ff;
+            color: #050a14;
+        }
+
+        .phase-pill.voting {
+            background: #ffcc00;
+            color: #050a14;
+        }
+
+        .phase-pill.gameover {
+            background: #ff4444;
+            color: #050a14;
+        }
+
+        .stat-chips {
+            display: flex;
+            gap: 8px;
+            font-size: 10px;
+        }
+
         .stat-chip {
-            background: rgba(0,229,255,0.1); border: 1px solid #00e5ff;
-            padding: 2px 6px; border-radius: 4px; color: #00e5ff;
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid #00e5ff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #00e5ff;
         }
 
-        .control-buttons { display: flex; gap: 8px; }
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
         .control-btn {
-            background: rgba(5,10,20,0.8); border: 1px solid #00e5ff;
-            color: #00e5ff; padding: 4px 10px; border-radius: 4px;
-            font-family: 'Share Tech Mono', monospace; font-size: 10px;
-            font-weight: bold; cursor: pointer; transition: all 0.2s ease;
+            background: rgba(5, 10, 20, 0.8);
+            border: 1px solid #00e5ff;
+            color: #00e5ff;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
-        .control-btn:hover {
-            background: rgba(0,229,255,0.2);
-            box-shadow: 0 0 8px rgba(0,229,255,0.6);
-        }
-        .control-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .speed-control { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #8ab4c4; }
-        .speed-dots { display: flex; gap: 4px; }
-        .speed-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: rgba(136,180,196,0.3); border: 1px solid rgba(136,180,196,0.5);
-            cursor: pointer; transition: all 0.2s ease;
+        .control-btn:hover {
+            background: rgba(0, 229, 255, 0.2);
+            box-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
         }
-        .speed-dot.active { background: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 4px rgba(0,229,255,0.6); }
+
+        .control-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 10px;
+            color: #8ab4c4;
+        }
+
+        .speed-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .speed-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(136, 180, 196, 0.3);
+            border: 1px solid rgba(136, 180, 196, 0.5);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .speed-dot.active {
+            background: #00e5ff;
+            border-color: #00e5ff;
+            box-shadow: 0 0 4px rgba(0, 229, 255, 0.6);
+        }
 
         .camera-toggle {
-            background: rgba(5,10,20,0.8); border: 1px solid #00e5ff; color: #00e5ff;
-            padding: 4px 8px; border-radius: 4px; font-size: 10px;
-            font-family: 'Share Tech Mono', monospace; font-weight: bold; cursor: pointer;
+            background: rgba(5, 10, 20, 0.8);
+            border: 1px solid #00e5ff;
+            color: #00e5ff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: 'Share Tech Mono', monospace;
+            font-weight: bold;
+            cursor: pointer;
         }
 
         .panel-header {
-            background: rgba(0,229,255,0.1); padding: 8px 12px;
-            border-bottom: 1px solid #0d2a3a; font-weight: bold;
-            text-transform: uppercase; font-size: 11px; letter-spacing: 1px; color: #00e5ff;
+            background: rgba(0, 229, 255, 0.1);
+            padding: 8px 12px;
+            border-bottom: 1px solid #0d2a3a;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: #00e5ff;
         }
 
-        .panel-content { padding: 8px; }
+        .panel-content {
+            padding: 8px;
+        }
 
         .agent-card {
-            background: rgba(0,0,0,0.4); border: 1px solid #0d2a3a;
-            border-radius: 4px; padding: 8px; margin-bottom: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #0d2a3a;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 6px;
         }
-        .agent-card.dead { opacity: 0.35; }
 
-        .event-log { max-height: calc(100% - 40px); overflow-y: auto; }
-        .event-item {
-            padding: 3px 0; border-bottom: 1px solid rgba(13,42,58,0.3);
-            font-size: 11px; animation: slideIn 200ms ease-out;
+        .agent-card.dead {
+            opacity: 0.35;
         }
-        .event-time { color: #00e5ff; margin-right: 6px; font-weight: bold; }
+
+        .event-log {
+            max-height: calc(100% - 40px);
+            overflow-y: auto;
+        }
+
+        .event-item {
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(13, 42, 58, 0.3);
+            font-size: 11px;
+            animation: slideIn 200ms ease-out;
+        }
+
+        .event-time {
+            color: #00e5ff;
+            margin-right: 6px;
+            font-weight: bold;
+        }
 
         @keyframes slideIn {
-            from { transform: translateX(10px); opacity: 0; }
-            to   { transform: translateX(0); opacity: 1; }
+            from {
+                transform: translateX(10px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         @keyframes fadeInUp {
-            from { 
-                transform: translateY(10px); 
-                opacity: 0; 
+            from {
+                transform: translateY(10px);
+                opacity: 0;
             }
-            to   { 
-                transform: translateY(0); 
-                opacity: 1; 
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
             }
         }
 
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: rgba(5,10,20,0.5); }
-        ::-webkit-scrollbar-thumb { background: #0d2a3a; border-radius: 2px; }
-        #chat-messages::-webkit-scrollbar { width: 4px }
-        #chat-messages::-webkit-scrollbar-thumb { 
-          background: #00e5ff; border-radius: 2px 
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(5, 10, 20, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #0d2a3a;
+            border-radius: 2px;
+        }
+
+        #chat-messages::-webkit-scrollbar {
+            width: 4px
+        }
+
+        #chat-messages::-webkit-scrollbar-thumb {
+            background: #00e5ff;
+            border-radius: 2px
         }
 
         /* ── MEETING OVERLAY ── */
         .meeting-overlay {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 1000; font-family: 'Courier New', monospace;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-family: 'Courier New', monospace;
         }
+
         .meeting-container {
-            background: rgba(20,20,30,0.97); border: 2px solid #ab47bc;
-            border-radius: 12px; padding: 28px; max-width: 580px; width: 92%;
-            max-height: 80vh; overflow-y: auto;
-            box-shadow: 0 0 40px rgba(171,71,188,0.5);
+            background: rgba(20, 20, 30, 0.97);
+            border: 2px solid #ab47bc;
+            border-radius: 12px;
+            padding: 28px;
+            max-width: 580px;
+            width: 92%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px rgba(171, 71, 188, 0.5);
         }
-        .meeting-header { text-align: center; margin-bottom: 16px; }
-        .meeting-header h2 { color: #ab47bc; font-size: 26px; margin: 0; text-shadow: 0 0 10px rgba(171,71,188,0.6); }
-        .meeting-reason { color: #ff6b6b; font-size: 14px; margin-top: 8px; font-weight: bold; }
-        .meeting-divider { height: 1px; background: linear-gradient(to right, transparent, #ab47bc, transparent); margin: 16px 0; }
-        .meeting-statements { min-height: 100px; }
+
+        .meeting-header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .meeting-header h2 {
+            color: #ab47bc;
+            font-size: 26px;
+            margin: 0;
+            text-shadow: 0 0 10px rgba(171, 71, 188, 0.6);
+        }
+
+        .meeting-reason {
+            color: #ff6b6b;
+            font-size: 14px;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        .meeting-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ab47bc, transparent);
+            margin: 16px 0;
+        }
+
+        .meeting-statements {
+            min-height: 100px;
+        }
+
         .statement {
-            color: #fff; margin: 8px 0; padding: 7px 10px;
-            background: rgba(171,71,188,0.1); border-left: 3px solid #ab47bc;
-            border-radius: 4px; opacity: 0; transform: translateX(-15px);
+            color: #fff;
+            margin: 8px 0;
+            padding: 7px 10px;
+            background: rgba(171, 71, 188, 0.1);
+            border-left: 3px solid #ab47bc;
+            border-radius: 4px;
+            opacity: 0;
+            transform: translateX(-15px);
             animation: stmtSlide 0.3s forwards;
         }
-        .statement .speaker { color: #ab47bc; font-weight: bold; }
-        @keyframes stmtSlide { to { opacity: 1; transform: translateX(0); } }
 
-        .meeting-votes h3 { color: #ab47bc; text-align: center; margin: 0 0 12px; }
-        .vote-tally { display: flex; flex-direction: column; gap: 8px; }
-        .vote-item { display: flex; align-items: center; gap: 10px; }
-        .vote-name { color: #fff; width: 70px; font-weight: bold; font-size: 13px; }
-        .vote-bar-container { flex: 1; height: 18px; background: rgba(255,255,255,0.1); border-radius: 9px; overflow: hidden; }
-        .vote-bar { height: 100%; background: linear-gradient(to right, #ab47bc, #8e24aa); border-radius: 9px; transition: width 0.8s ease-out; }
-        .vote-count { color: #fff; font-size: 13px; min-width: 50px; }
-        .meeting-result { text-align: center; margin: 16px 0; padding: 14px; border-radius: 8px; }
-        .ejected-player { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        .ejected-verdict { font-size: 14px; }
-        .ejected-impostor { background: rgba(76,175,80,0.2); border: 1px solid #4caf50; color: #4caf50; }
-        .ejected-innocent { background: rgba(244,67,54,0.2); border: 1px solid #f44336; color: #f44336; }
+        .statement .speaker {
+            color: #ab47bc;
+            font-weight: bold;
+        }
+
+        @keyframes stmtSlide {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .meeting-votes h3 {
+            color: #ab47bc;
+            text-align: center;
+            margin: 0 0 12px;
+        }
+
+        .vote-tally {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .vote-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .vote-name {
+            color: #fff;
+            width: 70px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .vote-bar-container {
+            flex: 1;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 9px;
+            overflow: hidden;
+        }
+
+        .vote-bar {
+            height: 100%;
+            background: linear-gradient(to right, #ab47bc, #8e24aa);
+            border-radius: 9px;
+            transition: width 0.8s ease-out;
+        }
+
+        .vote-count {
+            color: #fff;
+            font-size: 13px;
+            min-width: 50px;
+        }
+
+        .meeting-result {
+            text-align: center;
+            margin: 16px 0;
+            padding: 14px;
+            border-radius: 8px;
+        }
+
+        .ejected-player {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .ejected-verdict {
+            font-size: 14px;
+        }
+
+        .ejected-impostor {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+
+        .ejected-innocent {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            color: #f44336;
+        }
 
         .vote-role-reveal {
-            text-align: center; padding: 18px; margin-top: 16px;
-            border: 2px solid #fff; border-radius: 8px; background: rgba(0,0,0,0.8);
+            text-align: center;
+            padding: 18px;
+            margin-top: 16px;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.8);
             animation: revealAnim 0.5s ease-out;
         }
-        @keyframes revealAnim { from { opacity:0; transform: translateY(15px); } to { opacity:1; transform: translateY(0); } }
-        .role-reveal-title  { font-size: 22px; font-weight: bold; color: #ff5252; margin-bottom: 8px; letter-spacing: 2px; }
-        .role-reveal-name   { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 12px; }
-        .role-reveal-role   { font-size: 24px; font-weight: bold; padding: 8px 18px; border-radius: 5px; margin-bottom: 12px; letter-spacing: 3px; }
-        .role-reveal-role.impostor { background: linear-gradient(135deg,#ff5252,#ff1744); color:#fff; box-shadow: 0 0 20px rgba(255,82,82,0.5); }
-        .role-reveal-role.crewmate { background: linear-gradient(135deg,#4caf50,#8bc34a); color:#fff; box-shadow: 0 0 20px rgba(76,175,80,0.5); }
-        .role-reveal-subtitle { font-size: 14px; color: #ccc; font-style: italic; }
+
+        @keyframes revealAnim {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .role-reveal-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #ff5252;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .role-reveal-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+
+        .role-reveal-role {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 8px 18px;
+            border-radius: 5px;
+            margin-bottom: 12px;
+            letter-spacing: 3px;
+        }
+
+        .role-reveal-role.impostor {
+            background: linear-gradient(135deg, #ff5252, #ff1744);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255, 82, 82, 0.5);
+        }
+
+        .role-reveal-role.crewmate {
+            background: linear-gradient(135deg, #4caf50, #8bc34a);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+        }
+
+        .role-reveal-subtitle {
+            font-size: 14px;
+            color: #ccc;
+            font-style: italic;
+        }
 
         /* ── GAMEOVER OVERLAY ── */
         .gameover-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.96);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 2000; font-family: 'Courier New', monospace;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.96);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            font-family: 'Courier New', monospace;
         }
+
         .gameover-container {
-            background: rgba(20,20,30,0.99); border: 2px solid #ab47bc;
-            border-radius: 16px; padding: 36px; max-width: 680px; width: 92%;
-            max-height: 90vh; overflow-y: auto; text-align: center;
-            transform: scale(0.8); opacity: 0;
+            background: rgba(20, 20, 30, 0.99);
+            border: 2px solid #ab47bc;
+            border-radius: 16px;
+            padding: 36px;
+            max-width: 680px;
+            width: 92%;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: center;
+            transform: scale(0.8);
+            opacity: 0;
             animation: goReveal 0.5s ease-out forwards;
-            box-shadow: 0 0 60px rgba(171,71,188,0.6);
+            box-shadow: 0 0 60px rgba(171, 71, 188, 0.6);
         }
-        @keyframes goReveal { to { transform: scale(1); opacity: 1; } }
-        .gameover-title   { font-size: 44px; font-weight: bold; margin-bottom: 12px; text-shadow: 0 0 20px currentColor; }
-        .gameover-title.crewmate-win { color: #00bcd4; }
-        .gameover-title.impostor-win { color: #f44336; }
-        .gameover-reason  { font-size: 18px; color: #fff; margin-bottom: 24px; opacity: 0.9; }
-        .gameover-divider { height: 1px; background: linear-gradient(to right, transparent, #ab47bc, transparent); margin: 20px 0; }
-        .gameover-section h3 { color: #ab47bc; font-size: 16px; margin: 0 0 12px; letter-spacing: 2px; text-transform: uppercase; }
+
+        @keyframes goReveal {
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .gameover-title {
+            font-size: 44px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .gameover-title.crewmate-win {
+            color: #00bcd4;
+        }
+
+        .gameover-title.impostor-win {
+            color: #f44336;
+        }
+
+        .gameover-reason {
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 24px;
+            opacity: 0.9;
+        }
+
+        .gameover-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ab47bc, transparent);
+            margin: 20px 0;
+        }
+
+        .gameover-section h3 {
+            color: #ab47bc;
+            font-size: 16px;
+            margin: 0 0 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
 
         .role-reveal-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 10px; margin-bottom: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
         }
-        .role-item {
-            background: rgba(171,71,188,0.1); border: 1px solid rgba(171,71,188,0.3);
-            border-radius: 8px; padding: 10px; text-align: left;
-        }
-        .role-item-name { color: #fff; font-weight: bold; font-size: 13px; margin-bottom: 4px; }
-        .role-item-badge {
-            font-size: 11px; font-weight: bold; padding: 2px 6px;
-            border-radius: 3px; display: inline-block;
-        }
-        .role-item-badge.impostor { background: rgba(255,82,82,0.3); color: #ff5252; border: 1px solid rgba(255,82,82,0.5); }
-        .role-item-badge.crewmate { background: rgba(76,175,80,0.3); color: #69f0ae; border: 1px solid rgba(76,175,80,0.4); }
-        .role-item-status { font-size: 10px; color: #888; margin-top: 3px; }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 12px; }
-        .stat-item {
-            background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;
-            display: flex; justify-content: space-between; align-items: center;
+        .role-item {
+            background: rgba(171, 71, 188, 0.1);
+            border: 1px solid rgba(171, 71, 188, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: left;
         }
-        .stat-label { color: #fff; font-size: 13px; opacity: 0.8; }
-        .stat-value { color: #ab47bc; font-weight: bold; font-size: 15px; }
+
+        .role-item-name {
+            color: #fff;
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .role-item-badge {
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .role-item-badge.impostor {
+            background: rgba(255, 82, 82, 0.3);
+            color: #ff5252;
+            border: 1px solid rgba(255, 82, 82, 0.5);
+        }
+
+        .role-item-badge.crewmate {
+            background: rgba(76, 175, 80, 0.3);
+            color: #69f0ae;
+            border: 1px solid rgba(76, 175, 80, 0.4);
+        }
+
+        .role-item-status {
+            font-size: 10px;
+            color: #888;
+            margin-top: 3px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-label {
+            color: #fff;
+            font-size: 13px;
+            opacity: 0.8;
+        }
+
+        .stat-value {
+            color: #ab47bc;
+            font-weight: bold;
+            font-size: 15px;
+        }
 
         .play-again-btn {
-            background: linear-gradient(135deg, #ab47bc, #8e24aa); color: #fff;
-            border: none; border-radius: 12px; padding: 14px 36px;
-            font-size: 16px; font-weight: bold; cursor: pointer;
-            transition: all 0.3s ease; margin-top: 18px; text-transform: uppercase;
-            letter-spacing: 1px; box-shadow: 0 4px 15px rgba(171,71,188,0.4);
+            background: linear-gradient(135deg, #ab47bc, #8e24aa);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            padding: 14px 36px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(171, 71, 188, 0.4);
             font-family: 'Share Tech Mono', monospace;
         }
+
         .play-again-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(171,71,188,0.7);
+            box-shadow: 0 6px 20px rgba(171, 71, 188, 0.7);
         }
     </style>
 </head>
+
 <body>
     <div id="canvas-container"></div>
+
+
 
     <!-- TOP BAR -->
     <div id="top-bar" class="hud-panel">
@@ -322,7 +749,7 @@
                 <div id="meeting-reason" class="meeting-reason">Body found</div>
             </div>
             <div id="chat-log-trigger" style="text-align:center;margin:16px 0">
-              <button id="chat-log-btn" onclick="startChatLog()" style="
+                <button id="chat-log-btn" onclick="startChatLog()" style="
                 font-family: 'Share Tech Mono', monospace;
                 font-size: 13px;
                 letter-spacing: 3px;
@@ -335,7 +762,7 @@
                 transition: all 0.3s;
                 box-shadow: 0 0 12px rgba(0,229,255,0.2);
               ">[ CHAT LOG ]</button>
-              <div id="chat-log-status" style="
+                <div id="chat-log-status" style="
                 font-size: 10px;
                 color: #4a6a7a;
                 margin-top: 6px;
@@ -345,9 +772,9 @@
             </div>
             <div class="meeting-divider"></div>
             <div id="chat-window" style="display:none">
-              
-              <!-- Chat messages scroll area -->
-              <div id="chat-messages" style="
+
+                <!-- Chat messages scroll area -->
+                <div id="chat-messages" style="
                 height: 260px;
                 overflow-y: auto;
                 padding: 10px;
@@ -358,8 +785,8 @@
                 scroll-behavior: smooth;
               "></div>
 
-              <!-- Currently typing indicator -->
-              <div id="typing-indicator" style="
+                <!-- Currently typing indicator -->
+                <div id="typing-indicator" style="
                 display: none;
                 font-size: 10px;
                 color: #4a6a7a;
@@ -399,10 +826,14 @@
             <div class="gameover-section">
                 <h3>Statistics</h3>
                 <div class="stats-grid">
-                    <div class="stat-item"><span class="stat-label">Rounds:</span><span id="stat-rounds" class="stat-value">0</span></div>
-                    <div class="stat-item"><span class="stat-label">Tasks Done:</span><span id="stat-tasks" class="stat-value">0</span></div>
-                    <div class="stat-item"><span class="stat-label">Kills:</span><span id="stat-kills" class="stat-value">0</span></div>
-                    <div class="stat-item"><span class="stat-label">Impostor Caught:</span><span id="stat-ejection" class="stat-value">No</span></div>
+                    <div class="stat-item"><span class="stat-label">Rounds:</span><span id="stat-rounds"
+                            class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Tasks Done:</span><span id="stat-tasks"
+                            class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Kills:</span><span id="stat-kills"
+                            class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Impostor Caught:</span><span id="stat-ejection"
+                            class="stat-value">No</span></div>
                 </div>
             </div>
             <div class="gameover-divider"></div>
@@ -413,728 +844,744 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
-        <script src="world.js"></script>
+    <script src="world.js"></script>
     <script src="worldstate.js"></script>
     <script>
-    // ============================================================
-    // EVENT LOG
-    // ============================================================
-    window.addLog = function(message, type = 'system') {
-        const log = document.getElementById('event-log-container')
-        if (!log) return
-        const time = new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })
-        const colorMap = { kill:'#ff4444', meeting:'#cc88ff', vote:'#ffcc00', task:'#00cc66', system:'#2a4a5a', victory:'#ffcc00' }
-        const item = document.createElement('div')
-        item.className = 'event-item'
-        item.innerHTML = `<span class="event-time">${time}</span><span style="color:${colorMap[type]||'#8ab4c4'}">${message}</span>`
-        log.appendChild(item)
-        log.scrollTop = log.scrollHeight
-        while (log.children.length > 80) log.removeChild(log.firstChild)
-    }
+        // ============================================================
+        // EVENT LOG
+        // ============================================================
+        window.addLog = function (message, type = 'system') {
+            const log = document.getElementById('event-log-container')
+            if (!log) return
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+            const colorMap = { kill: '#ff4444', meeting: '#cc88ff', vote: '#ffcc00', task: '#00cc66', system: '#2a4a5a', victory: '#ffcc00' }
+            const item = document.createElement('div')
+            item.className = 'event-item'
+            item.innerHTML = `<span class="event-time">${time}</span><span style="color:${colorMap[type] || '#8ab4c4'}">${message}</span>`
+            log.appendChild(item)
+            log.scrollTop = log.scrollHeight
+            while (log.children.length > 80) log.removeChild(log.firstChild)
+        }
 
-    // ============================================================
-    // THREE.JS SCENE
-    // ============================================================
-    window.THREE = THREE  // expose for worldstate.js
+        // ============================================================
+        // THREE.JS SCENE
+        // ============================================================
+        window.THREE = THREE  // expose for worldstate.js
 
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x050810)
-    window.scene = scene
+        const scene = new THREE.Scene()
+        scene.background = new THREE.Color(0x050810)
+        window.scene = scene
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
-    camera.position.set(0, 18, 14)
-    camera.lookAt(0, 0, 0)
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
+        camera.position.set(0, 18, 14)
+        camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    document.getElementById('canvas-container').appendChild(renderer.domElement)
-
-    const labelRenderer = new THREE.CSS2DRenderer()
-    labelRenderer.setSize(window.innerWidth, window.innerHeight)
-    labelRenderer.domElement.style.position = 'absolute'
-    labelRenderer.domElement.style.top = '0px'
-    labelRenderer.domElement.style.pointerEvents = 'none'
-    document.getElementById('canvas-container').appendChild(labelRenderer.domElement)
-
-    const controls = new THREE.OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.05
-    controls.minDistance = 5
-    controls.maxDistance = 40
-    controls.maxPolarAngle = Math.PI / 2.1
-
-    scene.add(new THREE.AmbientLight(0x4444ff, 0.3))
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    dirLight.position.set(10, 20, 5)
-    dirLight.castShadow = true
-    scene.add(dirLight)
-
-    scene.add(new THREE.GridHelper(50, 50, 0x008888, 0x004444))
-
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(50, 50),
-        new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.8, metalness: 0.2 })
-    )
-    floor.rotation.x = -Math.PI / 2
-    floor.position.y = -0.01
-    floor.receiveShadow = true
-    scene.add(floor)
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight
-        camera.updateProjectionMatrix()
+        const renderer = new THREE.WebGLRenderer({ antialias: true })
+        renderer.domElement.id = 'game-canvas'
         renderer.setSize(window.innerWidth, window.innerHeight)
+        renderer.shadowMap.enabled = true
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        document.getElementById('canvas-container').appendChild(renderer.domElement)
+
+        const labelRenderer = new THREE.CSS2DRenderer()
         labelRenderer.setSize(window.innerWidth, window.innerHeight)
-    })
+        labelRenderer.domElement.style.position = 'absolute'
+        labelRenderer.domElement.style.top = '0px'
+        labelRenderer.domElement.style.pointerEvents = 'none'
+        document.getElementById('canvas-container').appendChild(labelRenderer.domElement)
 
-    // ============================================================
-    // ROOM LAYOUT
-    // ============================================================
-    const ROOM_POSITIONS = {
-        cafeteria:  { x:  0, z: -4 },
-        reactor:    { x: -8, z:  0 },
-        medbay:     { x: -5, z:  3 },
-        security:   { x: -2, z:  1 },
-        electrical: { x:  0, z:  5 },
-        storage:    { x:  4, z:  4 },
-        admin:      { x:  6, z: -1 }
-    }
+        const controls = new THREE.OrbitControls(camera, renderer.domElement)
+        controls.enableDamping = true
+        controls.dampingFactor = 0.05
+        controls.minDistance = 5
+        controls.maxDistance = 40
+        controls.maxPolarAngle = Math.PI / 2.1
 
-    window.getRoomPosition = id => ROOM_POSITIONS[id] || { x: 0, z: 0 }
+        scene.add(new THREE.AmbientLight(0x4444ff, 0.3))
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
+        dirLight.position.set(10, 20, 5)
+        dirLight.castShadow = true
+        scene.add(dirLight)
 
-    const ROOM_SIZES = {
-        Cafeteria:  { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
-        Admin:      { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
-        Reactor:    { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
-        Electrical: { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
-        Storage:    { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
-        MedBay:     { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
-        Security:   { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
-    }
+        scene.add(new THREE.GridHelper(50, 50, 0x008888, 0x004444))
 
-    const CONNECTION_PAIRS = [
-        ['cafeteria','reactor'], ['cafeteria','security'], ['cafeteria','admin'],
-        ['reactor','medbay'],    ['medbay','security'],    ['security','electrical'],
-        ['electrical','storage'],['storage','admin']
-    ]
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(50, 50),
+            new THREE.MeshStandardMaterial({ color: 0x050810, roughness: 0.8, metalness: 0.2 })
+        )
+        floor.rotation.x = -Math.PI / 2
+        floor.position.y = -0.01
+        floor.receiveShadow = true
+        scene.add(floor)
 
-    const roomMeshes = []
-    const connLines  = []
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight
+            camera.updateProjectionMatrix()
+            renderer.setSize(window.innerWidth, window.innerHeight)
+            labelRenderer.setSize(window.innerWidth, window.innerHeight)
+        })
 
-    function buildRooms() {
-        const names = { cafeteria:'Cafeteria', reactor:'Reactor', medbay:'MedBay',
-                        security:'Security', electrical:'Electrical', storage:'Storage', admin:'Admin' }
-        Object.entries(ROOM_POSITIONS).forEach(([id, pos]) => {
-            const name = names[id]
-            const s = ROOM_SIZES[name] || ROOM_SIZES.Storage
+        // ============================================================
+        // ROOM LAYOUT
+        // ============================================================
+        const ROOM_POSITIONS = {
+            cafeteria: { x: 0, z: -4 },
+            reactor: { x: -8, z: 0 },
+            medbay: { x: -5, z: 3 },
+            security: { x: -2, z: 1 },
+            electrical: { x: 0, z: 5 },
+            storage: { x: 4, z: 4 },
+            admin: { x: 6, z: -1 }
+        }
 
-            const platform = new THREE.Mesh(
-                new THREE.CylinderGeometry(s.r, s.r, s.h, 32),
-                new THREE.MeshStandardMaterial({ color:0x0d1428, roughness:0.7, metalness:0.3, emissive:0x004444, emissiveIntensity:0.2 })
-            )
-            platform.position.set(pos.x, 0, pos.z)
-            scene.add(platform)
+        window.getRoomPosition = id => ROOM_POSITIONS[id] || { x: 0, z: 0 }
+
+        const ROOM_SIZES = {
+            Cafeteria: { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
+            Admin: { r: 1.4, h: 0.2, rr: 1.6, rt: 0.12 },
+            Reactor: { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+            Electrical: { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+            Storage: { r: 1.0, h: 0.15, rr: 1.2, rt: 0.10 },
+            MedBay: { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
+            Security: { r: 0.7, h: 0.12, rr: 0.9, rt: 0.08 },
+        }
+
+        const CONNECTION_PAIRS = [
+            ['cafeteria', 'reactor'], ['cafeteria', 'security'], ['cafeteria', 'admin'],
+            ['reactor', 'medbay'], ['medbay', 'security'], ['security', 'electrical'],
+            ['electrical', 'storage'], ['storage', 'admin']
+        ]
+
+        const roomMeshes = []
+        const connLines = []
+
+        function buildRooms() {
+            const names = {
+                cafeteria: 'Cafeteria', reactor: 'Reactor', medbay: 'MedBay',
+                security: 'Security', electrical: 'Electrical', storage: 'Storage', admin: 'Admin'
+            }
+            Object.entries(ROOM_POSITIONS).forEach(([id, pos]) => {
+                const name = names[id]
+                const s = ROOM_SIZES[name] || ROOM_SIZES.Storage
+
+                const platform = new THREE.Mesh(
+                    new THREE.CylinderGeometry(s.r, s.r, s.h, 32),
+                    new THREE.MeshStandardMaterial({ color: 0x0d1428, roughness: 0.7, metalness: 0.3, emissive: 0x004444, emissiveIntensity: 0.2 })
+                )
+                platform.position.set(pos.x, 0, pos.z)
+                scene.add(platform)
+
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(s.rr, s.rt, 8, 32),
+                    new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.8 })
+                )
+                ring.position.set(pos.x, 0.08, pos.z)
+                ring.rotation.x = Math.PI / 2
+                scene.add(ring)
+
+                const div = document.createElement('div')
+                div.textContent = name
+                div.style.cssText = `color:#00ffff;font-size:${s.r === 1.4 ? '13px' : '11px'};font-family:'Share Tech Mono',monospace;font-weight:bold;white-space:nowrap;text-shadow:0 0 5px rgba(0,255,255,0.8);pointer-events:none;`
+                const label = new THREE.CSS2DObject(div)
+                label.position.set(pos.x, 1.6, pos.z)
+                scene.add(label)
+
+                roomMeshes.push({ id, ring, platform })
+            })
+
+            // Connections
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, opacity: 0.25, transparent: true })
+            CONNECTION_PAIRS.forEach(([a, b]) => {
+                const pa = ROOM_POSITIONS[a], pb = ROOM_POSITIONS[b]
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(pa.x, 0.2, pa.z),
+                    new THREE.Vector3(pb.x, 0.2, pb.z)
+                ])
+                const line = new THREE.Line(geo, lineMat.clone())
+                scene.add(line)
+                connLines.push(line)
+            })
+        }
+
+        buildRooms()
+
+
+
+        // ============================================================
+        // AGENT MESHES
+        // ============================================================
+        window.agentMeshes = {}
+        window.bodyMarkers = {}
+        window.agentProgressBars = {}
+
+        window.spawnAgentMesh = function (agent) {
+            // Clean up any old mesh first
+            if (window.agentMeshes[agent.id]) {
+                const old = window.agentMeshes[agent.id]
+                old.traverse(c => {
+                    if (c instanceof THREE.CSS2DObject) {
+                        if (c.parent) c.parent.remove(c)
+                        if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
+                    }
+                    if (c.geometry) c.geometry.dispose()
+                    if (c.material) c.material.dispose()
+                })
+                scene.remove(old)
+                window.agentMeshes[agent.id] = null
+            }
+
+            const g = new THREE.Group()
+
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: agent.color, emissive: agent.color, emissiveIntensity: 0.4,
+                roughness: 0.3, metalness: 0.7
+            })
+
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16), bodyMat)
+            body.position.y = 0.3; body.castShadow = true
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
+            head.position.y = 0.6; head.castShadow = true
+
+            const feet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
+            feet.castShadow = true
+
+            const visorGeo = new THREE.SphereGeometry(0.2, 16, 16)
+            visorGeo.scale(1, 0.75, 0.5)
+            const visor = new THREE.Mesh(visorGeo,
+                new THREE.MeshStandardMaterial({ color: 0xaaddff, emissive: 0xaaddff, emissiveIntensity: 0.8, roughness: 0.1, metalness: 0.9 }))
+            visor.position.set(0, 0.5, 0.25)
 
             const ring = new THREE.Mesh(
-                new THREE.TorusGeometry(s.rr, s.rt, 8, 32),
-                new THREE.MeshStandardMaterial({ color:0x00ffff, emissive:0x00ffff, emissiveIntensity:0.6, roughness:0.2, metalness:0.8 })
+                new THREE.TorusGeometry(0.35, 0.04, 8, 16),
+                new THREE.MeshStandardMaterial({
+                    color: agent.color, emissive: agent.color, emissiveIntensity: 0.6,
+                    transparent: true, opacity: 0.5, roughness: 0.1, metalness: 0.8
+                })
             )
-            ring.position.set(pos.x, 0.08, pos.z)
+            ring.position.y = 0.05
             ring.rotation.x = Math.PI / 2
-            scene.add(ring)
+            ring.userData.isGlowRing = true
+            ring.userData.pulseSpeed = 0.002
 
-            const div = document.createElement('div')
-            div.textContent = name
-            div.style.cssText = `color:#00ffff;font-size:${s.r===1.4?'13px':'11px'};font-family:'Share Tech Mono',monospace;font-weight:bold;white-space:nowrap;text-shadow:0 0 5px rgba(0,255,255,0.8);pointer-events:none;`
-            const label = new THREE.CSS2DObject(div)
-            label.position.set(pos.x, 1.6, pos.z)
-            scene.add(label)
+            g.add(body, head, feet, visor, ring)
 
-            roomMeshes.push({ id, ring, platform })
-        })
+            // Name label
+            const labelDiv = document.createElement('div')
+            labelDiv.textContent = agent.name
+            labelDiv.style.cssText = `color:${agent.color};font-size:12px;font-family:'Share Tech Mono',monospace;font-weight:bold;text-shadow:0 0 5px ${agent.color};white-space:nowrap;pointer-events:none;background:rgba(0,0,0,0.7);padding:2px 6px;border-radius:3px;border:1px solid ${agent.color};`
+            const nameLabel = new THREE.CSS2DObject(labelDiv)
+            nameLabel.position.y = 1.3
+            g.add(nameLabel)
+            agent.label = nameLabel
 
-        // Connections
-        const lineMat = new THREE.LineBasicMaterial({ color:0x00e5ff, opacity:0.25, transparent:true })
-        CONNECTION_PAIRS.forEach(([a, b]) => {
-            const pa = ROOM_POSITIONS[a], pb = ROOM_POSITIONS[b]
-            const geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(pa.x, 0.2, pa.z),
-                new THREE.Vector3(pb.x, 0.2, pb.z)
-            ])
-            const line = new THREE.Line(geo, lineMat.clone())
-            scene.add(line)
-            connLines.push(line)
-        })
-    }
+            // Position at spawn room
+            const pos = ROOM_POSITIONS[agent.currentRoom] || { x: 0, z: 0 }
+            g.position.set(pos.x + (Math.random() - 0.5) * 1.2, 0.5, pos.z + (Math.random() - 0.5) * 1.2)
 
-    buildRooms()
+            // Set initial target so lerp has a destination
+            agent.targetPosition = new THREE.Vector3(g.position.x, 0.5, g.position.z)
+            agent.isMoving = false
 
-    // ============================================================
-    // AGENT MESHES
-    // ============================================================
-    window.agentMeshes  = {}
-    window.bodyMarkers  = {}
-    window.agentProgressBars = {}
-
-    window.spawnAgentMesh = function(agent) {
-        // Clean up any old mesh first
-        if (window.agentMeshes[agent.id]) {
-            const old = window.agentMeshes[agent.id]
-            old.traverse(c => {
-                if (c instanceof THREE.CSS2DObject) {
-                    if (c.parent) c.parent.remove(c)
-                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
-                }
-                if (c.geometry) c.geometry.dispose()
-                if (c.material) c.material.dispose()
-            })
-            scene.remove(old)
-            window.agentMeshes[agent.id] = null
+            scene.add(g)
+            window.agentMeshes[agent.id] = g
+            agent.mesh = g
         }
 
-        const g = new THREE.Group()
-
-        const bodyMat = new THREE.MeshStandardMaterial({
-            color: agent.color, emissive: agent.color, emissiveIntensity: 0.4,
-            roughness: 0.3, metalness: 0.7
-        })
-
-        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 16), bodyMat)
-        body.position.y = 0.3; body.castShadow = true
-
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
-        head.position.y = 0.6; head.castShadow = true
-
-        const feet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), bodyMat)
-        feet.castShadow = true
-
-        const visorGeo = new THREE.SphereGeometry(0.2, 16, 16)
-        visorGeo.scale(1, 0.75, 0.5)
-        const visor = new THREE.Mesh(visorGeo,
-            new THREE.MeshStandardMaterial({ color:0xaaddff, emissive:0xaaddff, emissiveIntensity:0.8, roughness:0.1, metalness:0.9 }))
-        visor.position.set(0, 0.5, 0.25)
-
-        const ring = new THREE.Mesh(
-            new THREE.TorusGeometry(0.35, 0.04, 8, 16),
-            new THREE.MeshStandardMaterial({ color: agent.color, emissive: agent.color, emissiveIntensity: 0.6,
-                transparent: true, opacity: 0.5, roughness: 0.1, metalness: 0.8 })
-        )
-        ring.position.y = 0.05
-        ring.rotation.x = Math.PI / 2
-        ring.userData.isGlowRing = true
-        ring.userData.pulseSpeed = 0.002
-
-        g.add(body, head, feet, visor, ring)
-
-        // Name label
-        const labelDiv = document.createElement('div')
-        labelDiv.textContent = agent.name
-        labelDiv.style.cssText = `color:${agent.color};font-size:12px;font-family:'Share Tech Mono',monospace;font-weight:bold;text-shadow:0 0 5px ${agent.color};white-space:nowrap;pointer-events:none;background:rgba(0,0,0,0.7);padding:2px 6px;border-radius:3px;border:1px solid ${agent.color};`
-        const nameLabel = new THREE.CSS2DObject(labelDiv)
-        nameLabel.position.y = 1.3
-        g.add(nameLabel)
-        agent.label = nameLabel
-
-        // Position at spawn room
-        const pos = ROOM_POSITIONS[agent.currentRoom] || { x: 0, z: 0 }
-        g.position.set(pos.x + (Math.random()-0.5)*1.2, 0.5, pos.z + (Math.random()-0.5)*1.2)
-
-        // Set initial target so lerp has a destination
-        agent.targetPosition = new THREE.Vector3(g.position.x, 0.5, g.position.z)
-        agent.isMoving = false
-
-        scene.add(g)
-        window.agentMeshes[agent.id] = g
-        agent.mesh = g
-    }
-
-    window.handleAgentDeath = function(agent) {
-        const mesh = window.agentMeshes?.[agent.id]
-        if (mesh) {
-            // Remove CSS2DObject labels during fade
-            mesh.traverse(c => {
-                if (c instanceof THREE.CSS2DObject) {
-                    if (c.parent) c.parent.remove(c)
-                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
-                }
-            })
-            
-            // Start fade-out animation
-            mesh.userData.isDying = true
-            mesh.userData.fadeStartTime = Date.now()
-            mesh.userData.fadeDuration = 2000 // 2 seconds fade out
-            
-            // Don't set visible = false - let the animation handle it
-        }
-        if (agent.label) {
-            if (agent.label.element?.parentNode) agent.label.element.parentNode.removeChild(agent.label.element)
-            agent.label = null
-        }
-        if (window.spawnBodyMarker) window.spawnBodyMarker(agent, agent.currentRoom)
-    }
-
-    window.spawnBodyMarker = function(agent, roomId) {
-        if (window.bodyMarkers[agent.id]) {
-            scene.remove(window.bodyMarkers[agent.id])
-        }
-        const pos = ROOM_POSITIONS[roomId] || { x: 0, z: 0 }
-        const mat = new THREE.MeshBasicMaterial({ color: agent.color, transparent: true, opacity: 0.8 })
-        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat)
-        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat.clone())
-        b1.rotation.y =  Math.PI / 4
-        b2.rotation.y = -Math.PI / 4
-        const group = new THREE.Group()
-        group.add(b1, b2)
-        group.position.set(pos.x + (Math.random()-0.5)*0.8, 0.1, pos.z + (Math.random()-0.5)*0.8)
-        group.userData = { isBodyMarker: true, pulseSpeed: 0.001, originalOpacity: 0.8 }
-        scene.add(group)
-        window.bodyMarkers[agent.id] = group
-    }
-
-    // Progress bars
-    window.showAgentProgressBar = function(agentId) {
-        const agent = WORLD.agents.find(a => a.id === agentId)
-        if (!agent?.mesh) return
-        window.hideAgentProgressBar(agentId)
-
-        const wrap = document.createElement('div')
-        wrap.style.cssText = 'width:55px;height:5px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.3);border-radius:3px;overflow:hidden;pointer-events:none;'
-        const fill = document.createElement('div')
-        fill.style.cssText = 'height:100%;width:0%;background:#4caf50;transition:width 0.3s;'
-        wrap.appendChild(fill)
-
-        const obj = new THREE.CSS2DObject(wrap)
-        obj.position.set(0, -0.3, 0)
-        agent.mesh.add(obj)
-        window.agentProgressBars[agentId] = { wrap, fill, obj }
-    }
-
-    window.updateAgentProgressBar = function(agentId, pct) {
-        const bar = window.agentProgressBars[agentId]
-        if (!bar) return
-        bar.fill.style.width = Math.min(pct * 100, 100) + '%'
-        bar.fill.style.background = pct < 0.4 ? '#f44336' : pct < 0.7 ? '#ff9800' : '#4caf50'
-    }
-
-    window.hideAgentProgressBar = function(agentId) {
-        const bar = window.agentProgressBars[agentId]
-        if (!bar) return
-        if (bar.obj.parent) bar.obj.parent.remove(bar.obj)
-        if (bar.wrap.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
-        delete window.agentProgressBars[agentId]
-    }
-
-    // ============================================================
-    // PARTICLES + LIGHTS
-    // ============================================================
-    const particles = []
-    ;(function createParticles() {
-        const geo = new THREE.SphereGeometry(0.05, 6, 6)
-        const mat = new THREE.MeshBasicMaterial({ color:0x00ffff, transparent:true, opacity:0.6 })
-        for (let i = 0; i < 40; i++) {
-            const p = new THREE.Mesh(geo, mat.clone())
-            p.position.set((Math.random()-0.5)*30, Math.random()*10, (Math.random()-0.5)*30)
-            p.velocity = new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.01, (Math.random()-0.5)*0.02)
-            particles.push(p)
-            scene.add(p)
-        }
-    })()
-
-    const rotLights = []
-    for (let i = 0; i < 3; i++) {
-        const l = new THREE.PointLight(0x00ffff, 0.4, 12)
-        l.position.set(Math.cos(i * Math.PI*2/3)*15, 5, Math.sin(i * Math.PI*2/3)*15)
-        rotLights.push(l)
-        scene.add(l)
-    }
-
-    // ============================================================
-    // RENDER LOOP
-    // ============================================================
-    function animate() {
-        requestAnimationFrame(animate)
-        const t = Date.now() * 0.001
-
-        controls.update()
-
-        // Room rings
-        roomMeshes.forEach(({ ring, platform }) => {
-            if (ring) ring.material.emissiveIntensity = 0.5 + Math.sin(t * 1.5) * 0.3
-            if (ring) ring.rotation.z = t * 0.4
-            if (platform) platform.position.y = Math.sin(t * 2 + platform.position.x) * 0.05
-        })
-
-        // Particles
-        particles.forEach(p => {
-            p.position.add(p.velocity)
-            p.material.opacity = 0.2 + Math.sin(t * 3 + p.position.x) * 0.4
-            if (Math.abs(p.position.x) > 16) p.velocity.x *= -1
-            if (p.position.y > 10 || p.position.y < 0) p.velocity.y *= -1
-            if (Math.abs(p.position.z) > 16) p.velocity.z *= -1
-        })
-
-        // Rotating lights
-        rotLights.forEach((l, i) => {
-            const a = t + i * Math.PI * 2 / 3
-            l.position.x = Math.cos(a) * 15
-            l.position.z = Math.sin(a) * 15
-            l.position.y = 5 + Math.sin(t * 2) * 2
-        })
-
-        // Connection line pulse
-        connLines.forEach((line, i) => {
-            line.material.opacity = 0.15 + Math.sin(t * 2 + i * 0.5) * 0.2
-        })
-
-        // Agent glow rings pulse
-        Object.values(window.agentMeshes).forEach(g => {
-            if (!g) return
-            const ring = g.children.find(c => c.userData?.isGlowRing)
-            if (ring) {
-                const s = 1 + Math.sin(Date.now() * (ring.userData.pulseSpeed || 0.002)) * 0.12
-                ring.scale.set(s, s, 1)
-            }
-        })
-
-        // Body marker pulse
-        Object.values(window.bodyMarkers).forEach(g => {
-            if (!g?.userData?.isBodyMarker) return
-            const op = g.userData.originalOpacity + Math.sin(Date.now() * g.userData.pulseSpeed) * 0.2
-            g.children.forEach(c => { if (c.material) c.material.opacity = Math.max(0.3, Math.min(1, op)) })
-        })
-
-        // ✅ SMOOTH MOVEMENT — lerp toward targetPosition every frame
-        if (window.WORLD?.agents) {
-            for (const agent of WORLD.agents) {
-                if (!agent.alive) continue
-                const mesh = window.agentMeshes?.[agent.id]
-                if (!mesh || !agent.targetPosition) continue
-
-                if (agent.isMoving) {
-                    // Lerp speed: 0.04 = smooth but not too slow
-                    mesh.position.lerp(agent.targetPosition, 0.04)
-                    mesh.rotation.y += 0.02
-
-                    if (mesh.position.distanceTo(agent.targetPosition) < 0.08) {
-                        mesh.position.copy(agent.targetPosition)
-                        agent.isMoving = false
-                        mesh.rotation.y = 0
+        window.handleAgentDeath = function (agent) {
+            const mesh = window.agentMeshes?.[agent.id]
+            if (mesh) {
+                // Remove CSS2DObject labels during fade
+                mesh.traverse(c => {
+                    if (c instanceof THREE.CSS2DObject) {
+                        if (c.parent) c.parent.remove(c)
+                        if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
                     }
-                } else {
-                    // Idle bob
-                    mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + agent.id) * 0.06
-                }
+                })
+
+                // Start fade-out animation
+                mesh.userData.isDying = true
+                mesh.userData.fadeStartTime = Date.now()
+                mesh.userData.fadeDuration = 2000 // 2 seconds fade out
+
+                // Don't set visible = false - let the animation handle it
             }
+            if (agent.label) {
+                if (agent.label.element?.parentNode) agent.label.element.parentNode.removeChild(agent.label.element)
+                agent.label = null
+            }
+            if (window.spawnBodyMarker) window.spawnBodyMarker(agent, agent.currentRoom)
         }
 
-        // ✅ FADE OUT ANIMATION for dying agents
-        Object.values(window.agentMeshes).forEach(mesh => {
-            if (!mesh?.userData?.isDying) return
-            
-            const currentTime = Date.now()
-            const elapsed = currentTime - mesh.userData.fadeStartTime
-            const progress = Math.min(elapsed / mesh.userData.fadeDuration, 1)
-            
-            // Calculate opacity (1 to 0)
-            const opacity = 1 - progress
-            
-            // Apply fade to all mesh materials
-            mesh.traverse(child => {
-                if (child.material) {
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach(mat => {
-                            mat.transparent = true
-                            mat.opacity = opacity
-                        })
+        window.spawnBodyMarker = function (agent, roomId) {
+            if (window.bodyMarkers[agent.id]) {
+                scene.remove(window.bodyMarkers[agent.id])
+            }
+            const pos = ROOM_POSITIONS[roomId] || { x: 0, z: 0 }
+            const mat = new THREE.MeshBasicMaterial({ color: agent.color, transparent: true, opacity: 0.8 })
+            const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat)
+            const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.2), mat.clone())
+            b1.rotation.y = Math.PI / 4
+            b2.rotation.y = -Math.PI / 4
+            const group = new THREE.Group()
+            group.add(b1, b2)
+            group.position.set(pos.x + (Math.random() - 0.5) * 0.8, 0.1, pos.z + (Math.random() - 0.5) * 0.8)
+            group.userData = { isBodyMarker: true, pulseSpeed: 0.001, originalOpacity: 0.8 }
+            scene.add(group)
+            window.bodyMarkers[agent.id] = group
+        }
+
+        // Progress bars
+        window.showAgentProgressBar = function (agentId) {
+            const agent = WORLD.agents.find(a => a.id === agentId)
+            if (!agent?.mesh) return
+            window.hideAgentProgressBar(agentId)
+
+            const wrap = document.createElement('div')
+            wrap.style.cssText = 'width:55px;height:5px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.3);border-radius:3px;overflow:hidden;pointer-events:none;'
+            const fill = document.createElement('div')
+            fill.style.cssText = 'height:100%;width:0%;background:#4caf50;transition:width 0.3s;'
+            wrap.appendChild(fill)
+
+            const obj = new THREE.CSS2DObject(wrap)
+            obj.position.set(0, -0.3, 0)
+            agent.mesh.add(obj)
+            window.agentProgressBars[agentId] = { wrap, fill, obj }
+        }
+
+        window.updateAgentProgressBar = function (agentId, pct) {
+            const bar = window.agentProgressBars[agentId]
+            if (!bar) return
+            bar.fill.style.width = Math.min(pct * 100, 100) + '%'
+            bar.fill.style.background = pct < 0.4 ? '#f44336' : pct < 0.7 ? '#ff9800' : '#4caf50'
+        }
+
+        window.hideAgentProgressBar = function (agentId) {
+            const bar = window.agentProgressBars[agentId]
+            if (!bar) return
+            if (bar.obj.parent) bar.obj.parent.remove(bar.obj)
+            if (bar.wrap.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
+            delete window.agentProgressBars[agentId]
+        }
+
+        // ============================================================
+        // PARTICLES + LIGHTS
+        // ============================================================
+        const particles = []
+            ; (function createParticles() {
+                const geo = new THREE.SphereGeometry(0.05, 6, 6)
+                const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 })
+                for (let i = 0; i < 40; i++) {
+                    const p = new THREE.Mesh(geo, mat.clone())
+                    p.position.set((Math.random() - 0.5) * 30, Math.random() * 10, (Math.random() - 0.5) * 30)
+                    p.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.02, Math.random() * 0.01, (Math.random() - 0.5) * 0.02)
+                    particles.push(p)
+                    scene.add(p)
+                }
+            })()
+
+        const rotLights = []
+        for (let i = 0; i < 3; i++) {
+            const l = new THREE.PointLight(0x00ffff, 0.4, 12)
+            l.position.set(Math.cos(i * Math.PI * 2 / 3) * 15, 5, Math.sin(i * Math.PI * 2 / 3) * 15)
+            rotLights.push(l)
+            scene.add(l)
+        }
+
+        // ============================================================
+        // RENDER LOOP
+        // ============================================================
+        function animate() {
+            requestAnimationFrame(animate)
+            const t = Date.now() * 0.001
+
+            controls.update()
+
+            // Room rings
+            roomMeshes.forEach(({ ring, platform }) => {
+                if (ring) ring.material.emissiveIntensity = 0.5 + Math.sin(t * 1.5) * 0.3
+                if (ring) ring.rotation.z = t * 0.4
+                if (platform) platform.position.y = Math.sin(t * 2 + platform.position.x) * 0.05
+            })
+
+            // Particles
+            particles.forEach(p => {
+                p.position.add(p.velocity)
+                p.material.opacity = 0.2 + Math.sin(t * 3 + p.position.x) * 0.4
+                if (Math.abs(p.position.x) > 16) p.velocity.x *= -1
+                if (p.position.y > 10 || p.position.y < 0) p.velocity.y *= -1
+                if (Math.abs(p.position.z) > 16) p.velocity.z *= -1
+            })
+
+            // Rotating lights
+            rotLights.forEach((l, i) => {
+                const a = t + i * Math.PI * 2 / 3
+                l.position.x = Math.cos(a) * 15
+                l.position.z = Math.sin(a) * 15
+                l.position.y = 5 + Math.sin(t * 2) * 2
+            })
+
+            // Connection line pulse
+            connLines.forEach((line, i) => {
+                line.material.opacity = 0.15 + Math.sin(t * 2 + i * 0.5) * 0.2
+            })
+
+            // Agent glow rings pulse
+            Object.values(window.agentMeshes).forEach(g => {
+                if (!g) return
+                const ring = g.children.find(c => c.userData?.isGlowRing)
+                if (ring) {
+                    const s = 1 + Math.sin(Date.now() * (ring.userData.pulseSpeed || 0.002)) * 0.12
+                    ring.scale.set(s, s, 1)
+                }
+            })
+
+            // Body marker pulse
+            Object.values(window.bodyMarkers).forEach(g => {
+                if (!g?.userData?.isBodyMarker) return
+                const op = g.userData.originalOpacity + Math.sin(Date.now() * g.userData.pulseSpeed) * 0.2
+                g.children.forEach(c => { if (c.material) c.material.opacity = Math.max(0.3, Math.min(1, op)) })
+            })
+
+            // ✅ SMOOTH MOVEMENT — lerp toward targetPosition every frame
+            if (window.WORLD?.agents) {
+                for (const agent of WORLD.agents) {
+                    if (!agent.alive) continue
+                    const mesh = window.agentMeshes?.[agent.id]
+                    if (!mesh || !agent.targetPosition) continue
+
+                    if (agent.isMoving) {
+                        // Lerp speed: 0.04 = smooth but not too slow
+                        mesh.position.lerp(agent.targetPosition, 0.04)
+                        mesh.rotation.y += 0.02
+
+                        if (mesh.position.distanceTo(agent.targetPosition) < 0.08) {
+                            mesh.position.copy(agent.targetPosition)
+                            agent.isMoving = false
+                            mesh.rotation.y = 0
+                        }
                     } else {
-                        child.material.transparent = true
-                        child.material.opacity = opacity
+                        // Idle bob
+                        mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + agent.id) * 0.06
                     }
                 }
-            })
-            
-            // Hide mesh completely when fade is done
-            if (progress >= 1) {
-                mesh.visible = false
-                mesh.userData.isDying = false
             }
-        })
 
-        renderer.render(scene, camera)
-        labelRenderer.render(scene, camera)
-    }
+            // ✅ FADE OUT ANIMATION for dying agents
+            Object.values(window.agentMeshes).forEach(mesh => {
+                if (!mesh?.userData?.isDying) return
 
-    animate()
+                const currentTime = Date.now()
+                const elapsed = currentTime - mesh.userData.fadeStartTime
+                const progress = Math.min(elapsed / mesh.userData.fadeDuration, 1)
 
-    // ============================================================
-    // GAME CONTROLS
-    // ============================================================
-    let tickTimer  = null
-    let gameSpeed  = 3
-    let isPaused   = false
+                // Calculate opacity (1 to 0)
+                const opacity = 1 - progress
 
-    function getTickInterval() { return Math.round(1000 / gameSpeed) }
+                // Apply fade to all mesh materials
+                mesh.traverse(child => {
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => {
+                                mat.transparent = true
+                                mat.opacity = opacity
+                            })
+                        } else {
+                            child.material.transparent = true
+                            child.material.opacity = opacity
+                        }
+                    }
+                })
 
-    function startTickLoop() {
-        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
-        tickTimer = setInterval(async () => {
-            if (isPaused) return
-            if (!window.WORLD) return
-            if (window.WORLD.phase === 'roaming') {
-                await window.WORLD.tick()
-            }
-        }, getTickInterval())
-    }
-
-    // START
-    document.getElementById('start-btn').addEventListener('click', () => {
-        if (!window.WORLD) return
-        if (window.WORLD.agents.length === 0) {
-            window.WORLD.spawnAgents()
-        }
-        isPaused = false
-        window.WORLD.setPhase('roaming')
-        startTickLoop()
-        addLog('Simulation started', 'system')
-        document.getElementById('start-btn').disabled = true
-    })
-
-    // PAUSE
-    document.getElementById('pause-btn').addEventListener('click', () => {
-        isPaused = !isPaused
-        addLog(isPaused ? 'Paused' : 'Resumed', 'system')
-        document.getElementById('pause-btn').textContent = isPaused ? '▶ RESUME' : '⏸ PAUSE'
-    })
-
-    // RESET
-    document.getElementById('reset-btn').addEventListener('click', () => {
-        resetGame()
-    })
-
-    // SPEED
-    document.getElementById('speed-dots').addEventListener('click', e => {
-        if (!e.target.classList.contains('speed-dot')) return
-        document.querySelectorAll('.speed-dot').forEach(d => d.classList.remove('active'))
-        e.target.classList.add('active')
-        gameSpeed = parseInt(e.target.dataset.speed)
-        if (tickTimer) startTickLoop()
-        addLog(`Speed: ${gameSpeed}x`, 'system')
-    })
-
-    // CAMERA
-    document.getElementById('camera-toggle').addEventListener('click', () => {
-        controls.autoRotate = !controls.autoRotate
-        document.getElementById('camera-toggle').textContent = controls.autoRotate ? 'CAM: AUTO' : 'CAM: ORBIT'
-    })
-
-    // CHAT LOG BUTTON HOVER EFFECTS
-    const btn = document.getElementById('chat-log-btn')
-    if (btn) {
-        btn.addEventListener('mouseenter', () => {
-            btn.style.background = 'rgba(0,229,255,0.1)'
-            btn.style.boxShadow = '0 0 20px rgba(0,229,255,0.4)'
-        })
-        btn.addEventListener('mouseleave', () => {
-            btn.style.background = 'transparent'
-            btn.style.boxShadow = '0 0 12px rgba(0,229,255,0.2)'
-        })
-    }
-
-    // CHAT LOG FUNCTIONALITY
-    let meetingTranscript = []
-
-    async function startChatLog() {
-      // Disable button immediately — prevent double trigger
-      const btn = document.getElementById('chat-log-btn')
-      const status = document.getElementById('chat-log-status')
-      if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed' }
-      if (status) status.textContent = 'OPENING COMMUNICATION LINES...'
-
-      // Hide initial statements and show chat window
-      const stmtsEl = document.getElementById('meeting-statements')
-      if (stmtsEl) stmtsEl.style.display = 'none'
-      const chatWindow = document.getElementById('chat-window')
-      if (chatWindow) chatWindow.style.display = 'block'
-
-      // Clear transcript for this meeting
-      meetingTranscript = []
-
-      const aliveAgents = WORLD.agents.filter(a => a.alive)
-      const context = {
-        aliveAgents,
-        bodyFound: WORLD.bodyFound,
-      }
-
-      if (status) status.textContent = `AGENTS ONLINE: ${aliveAgents.length}` 
-
-      // Run each agent SEQUENTIALLY — one at a time
-      for (let i = 0; i < aliveAgents.length; i++) {
-        const agent = aliveAgents[i]
-
-        // Show typing indicator
-        showTypingIndicator(agent)
-        if (status) status.textContent = `${agent.name} IS SPEAKING... (${i+1}/${aliveAgents.length})` 
-
-        // Pause before each agent speaks — feels natural
-        await sleep(1000) // 1 second before speaking
-
-        // Debug agent properties
-        console.log('Agent:', agent.name, 'Color:', agent.color, 'Role:', agent.role)
-        
-        // Render empty bubble that will fill via streaming
-        const { textEl } = renderChatMessage(agent, '', true)
-        console.log('Chat bubble created, textEl:', textEl ? 'found' : 'null')
-
-        // Build prompt with full context + prior transcript
-        const prompt = buildAgentPrompt(agent, context, meetingTranscript)
-        console.log('Generated prompt length:', prompt.length)
-
-        let fullStatement = ''
-
-        // Check if LLM functions are available
-        if (!window.callLLMStream) {
-          console.error('callLLMStream not available')
-          fullStatement = getFallbackStatement(agent)
-        } else if (!window.buildAgentPrompt) {
-          console.error('buildAgentPrompt not available')
-          fullStatement = getFallbackStatement(agent)
-        } else {
-          // Stream response word by word into bubble
-          try {
-            await callLLMStream(
-              prompt,
-              (chunk, full) => {
-                // onChunk: update bubble text as words arrive
-                console.log('onChunk called - chunk:', chunk, 'full:', full)
-                fullStatement = full
-                if (textEl) {
-                  console.log('Updating textEl with:', full)
-                  textEl.textContent = full
-                  const msgs = document.getElementById('chat-messages')
-                  if (msgs) msgs.scrollTop = msgs.scrollHeight
-                } else {
-                  console.log('textEl is null, cannot update')
+                // Hide mesh completely when fade is done
+                if (progress >= 1) {
+                    mesh.visible = false
+                    mesh.userData.isDying = false
                 }
-              },
-              (finalText) => {
-                // onDone: clean up final text
-                console.log('onDone called with:', finalText)
-                fullStatement = finalText || getFallbackStatement(agent)
-                if (textEl) textEl.textContent = fullStatement
-              }
-            )
-            
-            // Wait a bit to see if streaming works
-            await sleep(2000)
-            
-            // If still no response after 2 seconds, use fallback
-            if (!fullStatement) {
-              console.log('LLM timeout - using fallback')
-              fullStatement = getFallbackStatement(agent)
-              if (textEl) textEl.textContent = fullStatement
+            })
+
+            renderer.render(scene, camera)
+            labelRenderer.render(scene, camera)
+        }
+
+        animate()
+
+        // ============================================================
+        // GAME CONTROLS
+        // ============================================================
+        let tickTimer = null
+        let gameSpeed = 3
+        let isPaused = false
+
+        function getTickInterval() { return Math.round(1000 / gameSpeed) }
+
+        function startTickLoop() {
+            if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+            tickTimer = setInterval(async () => {
+                if (isPaused) return
+                if (!window.WORLD) return
+                if (window.WORLD.phase === 'roaming') {
+                    await window.WORLD.tick()
+                }
+            }, getTickInterval())
+        }
+        window.startGameLoop = startTickLoop
+
+        function startGame() {
+            if (!window.WORLD) return
+            window.GAME_CONFIG.mode = 'ai'
+            window.GAME_CONFIG.playerName = 'NOVA'
+            window.GAME_CONFIG.playerRole = null
+            window.playerAgent = null
+
+            if (window.WORLD.agents.length === 0) window.WORLD.spawnAgents()
+            isPaused = false
+            window.WORLD.setPhase('roaming')
+            startTickLoop()
+            addLog(`Simulation started (AI mode)`, 'system')
+            document.getElementById('start-btn').disabled = true
+        }
+        window.startGame = startGame
+
+        // START
+        document.getElementById('start-btn').addEventListener('click', () => {
+            startGame()
+        })
+
+        // PAUSE
+        document.getElementById('pause-btn').addEventListener('click', () => {
+            isPaused = !isPaused
+            addLog(isPaused ? 'Paused' : 'Resumed', 'system')
+            document.getElementById('pause-btn').textContent = isPaused ? '▶ RESUME' : '⏸ PAUSE'
+        })
+
+        // RESET
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            resetGame()
+        })
+
+        // SPEED
+        document.getElementById('speed-dots').addEventListener('click', e => {
+            if (!e.target.classList.contains('speed-dot')) return
+            document.querySelectorAll('.speed-dot').forEach(d => d.classList.remove('active'))
+            e.target.classList.add('active')
+            gameSpeed = parseInt(e.target.dataset.speed)
+            if (tickTimer) startTickLoop()
+            addLog(`Speed: ${gameSpeed}x`, 'system')
+        })
+
+        // CAMERA
+        document.getElementById('camera-toggle').addEventListener('click', () => {
+            controls.autoRotate = !controls.autoRotate
+            document.getElementById('camera-toggle').textContent = controls.autoRotate ? 'CAM: AUTO' : 'CAM: ORBIT'
+        })
+
+        // CHAT LOG BUTTON HOVER EFFECTS
+        const btn = document.getElementById('chat-log-btn')
+        if (btn) {
+            btn.addEventListener('mouseenter', () => {
+                btn.style.background = 'rgba(0,229,255,0.1)'
+                btn.style.boxShadow = '0 0 20px rgba(0,229,255,0.4)'
+            })
+            btn.addEventListener('mouseleave', () => {
+                btn.style.background = 'transparent'
+                btn.style.boxShadow = '0 0 12px rgba(0,229,255,0.2)'
+            })
+        }
+
+        // CHAT LOG FUNCTIONALITY
+        let meetingTranscript = []
+
+        async function startChatLog() {
+            // Disable button immediately — prevent double trigger
+            const btn = document.getElementById('chat-log-btn')
+            const status = document.getElementById('chat-log-status')
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed' }
+            if (status) status.textContent = 'OPENING COMMUNICATION LINES...'
+
+            // Hide initial statements and show chat window
+            const stmtsEl = document.getElementById('meeting-statements')
+            if (stmtsEl) stmtsEl.style.display = 'none'
+            const chatWindow = document.getElementById('chat-window')
+            if (chatWindow) chatWindow.style.display = 'block'
+
+            // Clear transcript for this meeting
+            meetingTranscript = []
+
+            const aliveAgents = WORLD.agents.filter(a => a.alive)
+            const context = {
+                aliveAgents,
+                bodyFound: WORLD.bodyFound,
             }
-          } catch (error) {
-            console.error('LLM Stream error:', error)
-            fullStatement = getFallbackStatement(agent)
-            if (textEl) textEl.textContent = fullStatement
-          }
+
+            if (status) status.textContent = `AGENTS ONLINE: ${aliveAgents.length}`
+
+            // Run each agent SEQUENTIALLY — one at a time
+            for (let i = 0; i < aliveAgents.length; i++) {
+                const agent = aliveAgents[i]
+
+                // Show typing indicator
+                showTypingIndicator(agent)
+                if (status) status.textContent = `${agent.name} IS SPEAKING... (${i + 1}/${aliveAgents.length})`
+
+                // Pause before each agent speaks — feels natural
+                await sleep(1000) // 1 second before speaking
+
+                // Debug agent properties
+                console.log('Agent:', agent.name, 'Color:', agent.color, 'Role:', agent.role)
+
+                // Render empty bubble that will fill via streaming
+                const { textEl } = renderChatMessage(agent, '', true)
+                console.log('Chat bubble created, textEl:', textEl ? 'found' : 'null')
+
+                // Build prompt with full context + prior transcript
+                const prompt = buildAgentPrompt(agent, context, meetingTranscript)
+                console.log('Generated prompt length:', prompt.length)
+
+                let fullStatement = ''
+
+                // Check if LLM functions are available
+                if (!window.callLLMStream) {
+                    console.error('callLLMStream not available')
+                    fullStatement = getFallbackStatement(agent)
+                } else if (!window.buildAgentPrompt) {
+                    console.error('buildAgentPrompt not available')
+                    fullStatement = getFallbackStatement(agent)
+                } else {
+                    // Stream response word by word into bubble
+                    try {
+                        await callLLMStream(
+                            prompt,
+                            (chunk, full) => {
+                                // onChunk: update bubble text as words arrive
+                                console.log('onChunk called - chunk:', chunk, 'full:', full)
+                                fullStatement = full
+                                if (textEl) {
+                                    console.log('Updating textEl with:', full)
+                                    textEl.textContent = full
+                                    const msgs = document.getElementById('chat-messages')
+                                    if (msgs) msgs.scrollTop = msgs.scrollHeight
+                                } else {
+                                    console.log('textEl is null, cannot update')
+                                }
+                            },
+                            (finalText) => {
+                                // onDone: clean up final text
+                                console.log('onDone called with:', finalText)
+                                fullStatement = finalText || getFallbackStatement(agent)
+                                if (textEl) textEl.textContent = fullStatement
+                            }
+                        )
+
+                        // Wait a bit to see if streaming works
+                        await sleep(2000)
+
+                        // If still no response after 2 seconds, use fallback
+                        if (!fullStatement) {
+                            console.log('LLM timeout - using fallback')
+                            fullStatement = getFallbackStatement(agent)
+                            if (textEl) textEl.textContent = fullStatement
+                        }
+                    } catch (error) {
+                        console.error('LLM Stream error:', error)
+                        fullStatement = getFallbackStatement(agent)
+                        if (textEl) textEl.textContent = fullStatement
+                    }
+                }
+
+                // If LLM failed use fallback
+                if (!fullStatement) {
+                    fullStatement = getFallbackStatement(agent)
+                    if (textEl) textEl.textContent = fullStatement
+                }
+
+                // Add to transcript
+                meetingTranscript.push({ name: agent.name, agent, statement: fullStatement })
+                WORLD.logEvent('meeting', `${agent.name}: "${fullStatement.slice(0, 50)}..."`)
+
+                // Longer pause between agents for readability
+                hideTypingIndicator()
+                await sleep(2000) // 2 seconds between agents
+            }
+
+            // All agents have spoken — pause before voting
+            if (status) status.textContent = 'DISCUSSION COMPLETE — VOTING BEGINS'
+            await sleep(3000) // 3 seconds before voting starts
+
+            // Trigger vote phase using transcript as source of truth
+            await runVotePhaseFromTranscript(meetingTranscript, context)
         }
 
-        // If LLM failed use fallback
-        if (!fullStatement) {
-          fullStatement = getFallbackStatement(agent)
-          if (textEl) textEl.textContent = fullStatement
+        function getFallbackStatement(agent) {
+            const fallbacks = agent.role === 'impostor' ? [
+                "I was just doing my tasks, I saw nothing suspicious.",
+                "Someone is trying to frame me, I'm innocent.",
+                "We need to look at who's been acting strange lately."
+            ] : [
+                "I was working alone in my section.",
+                "I heard some noises but didn't see anything.",
+                "We need to be careful about who we vote out."
+            ]
+            return fallbacks[Math.floor(Math.random() * fallbacks.length)]
         }
 
-        // Add to transcript
-        meetingTranscript.push({ name: agent.name, agent, statement: fullStatement })
-        WORLD.logEvent('meeting', `${agent.name}: "${fullStatement.slice(0,50)}..."`)
-
-        // Longer pause between agents for readability
-        hideTypingIndicator()
-        await sleep(2000) // 2 seconds between agents
-      }
-
-      // All agents have spoken — pause before voting
-      if (status) status.textContent = 'DISCUSSION COMPLETE — VOTING BEGINS'
-      await sleep(3000) // 3 seconds before voting starts
-
-      // Trigger vote phase using transcript as source of truth
-      await runVotePhaseFromTranscript(meetingTranscript, context)
-    }
-
-    function getFallbackStatement(agent) {
-      const fallbacks = agent.role === 'impostor' ? [
-        "I was just doing my tasks, I saw nothing suspicious.",
-        "Someone is trying to frame me, I'm innocent.",
-        "We need to look at who's been acting strange lately."
-      ] : [
-        "I was working alone in my section.",
-        "I heard some noises but didn't see anything.",
-        "We need to be careful about who we vote out."
-      ]
-      return fallbacks[Math.floor(Math.random() * fallbacks.length)]
-    }
-
-    async function runVotePhaseFromTranscript(transcript, context) {
-      // For now, just show the transcript and trigger existing voting logic
-      const statementsDiv = document.getElementById('meeting-statements')
-      if (statementsDiv) {
-        statementsDiv.innerHTML = transcript.map(t => 
-          `<div style="margin: 8px 0; padding: 8px; background: rgba(0,229,255,0.05); border-left: 2px solid #00e5ff; border-radius: 2px;">
+        async function runVotePhaseFromTranscript(transcript, context) {
+            // For now, just show the transcript and trigger existing voting logic
+            const statementsDiv = document.getElementById('meeting-statements')
+            if (statementsDiv) {
+                statementsDiv.innerHTML = transcript.map(t =>
+                    `<div style="margin: 8px 0; padding: 8px; background: rgba(0,229,255,0.05); border-left: 2px solid #00e5ff; border-radius: 2px;">
             <strong style="color: #00e5ff">${t.name}:</strong> ${t.statement}
           </div>`
-        ).join('')
-      }
-      
-      // Hide chat window and show statements
-      document.getElementById('chat-window').style.display = 'none'
-      if (statementsDiv) statementsDiv.style.display = 'block'
-      
-      // Process responses to update suspicions
-      if (window.processAgentResponse) {
-        for (const t of transcript) {
-          window.processAgentResponse(t.name, t.statement, t.agent)
+                ).join('')
+            }
+
+            // Hide chat window and show statements
+            document.getElementById('chat-window').style.display = 'none'
+            if (statementsDiv) statementsDiv.style.display = 'block'
+
+            // Process responses to update suspicions
+            if (window.processAgentResponse) {
+                for (const t of transcript) {
+                    window.processAgentResponse(t.name, t.statement, t.agent)
+                }
+            }
+
+            // Hide the chat log button and update status
+            const btn = document.getElementById('chat-log-btn')
+            const status = document.getElementById('chat-log-status')
+            if (btn) {
+                btn.style.display = 'none'
+            }
+            if (status) status.textContent = 'VOTING IN PROGRESS...'
+
+            // Give player a short time to read the statements
+            await sleep(2500)
+
+            // Start voting logic
+            if (window.proceedToVoting) {
+                await window.proceedToVoting()
+            }
         }
-      }
 
-      // Hide the chat log button and update status
-      const btn = document.getElementById('chat-log-btn')
-      const status = document.getElementById('chat-log-status')
-      if (btn) { 
-        btn.style.display = 'none'
-      }
-      if (status) status.textContent = 'VOTING IN PROGRESS...'
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms))
+        }
 
-      // Give player a short time to read the statements
-      await sleep(2500)
+        window.startChatLog = startChatLog
+        window.meetingTranscript = meetingTranscript
 
-      // Start voting logic
-      if (window.proceedToVoting) {
-        await window.proceedToVoting()
-      }
-    }
+        // CHAT MESSAGE RENDERING
+        function renderChatMessage(agent, text, isStreaming) {
+            const container = document.getElementById('chat-messages')
+            if (!container) return null
 
-    function sleep(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms))
-    }
+            const msgId = `msg-${agent.id}-${Date.now()}`
+            const isImpostor = agent.role === 'impostor'
 
-    window.startChatLog = startChatLog
-    window.meetingTranscript = meetingTranscript
-
-    // CHAT MESSAGE RENDERING
-    function renderChatMessage(agent, text, isStreaming) {
-      const container = document.getElementById('chat-messages')
-      if (!container) return null
-
-      const msgId = `msg-${agent.id}-${Date.now()}` 
-      const isImpostor = agent.role === 'impostor'
-
-      const bubble = document.createElement('div')
-      bubble.id = msgId
-      bubble.style.cssText = `
+            const bubble = document.createElement('div')
+            bubble.id = msgId
+            bubble.style.cssText = `
         display: flex;
         align-items: flex-start;
         gap: 8px;
@@ -1142,9 +1589,9 @@
         animation: fadeInUp 0.3s ease;
       `
 
-      // Avatar dot
-      const avatar = document.createElement('div')
-      avatar.style.cssText = `
+            // Avatar dot
+            const avatar = document.createElement('div')
+            avatar.style.cssText = `
         width: 28px; height: 28px;
         border-radius: 50%;
         background: ${agent.color};
@@ -1153,25 +1600,25 @@
         flex-shrink: 0; margin-top: 2px;
         box-shadow: 0 0 8px ${agent.color}60;
       `
-      avatar.textContent = agent.name.slice(0,2)
+            avatar.textContent = agent.name.slice(0, 2)
 
-      // Message content
-      const content = document.createElement('div')
-      content.style.cssText = `flex: 1` 
+            // Message content
+            const content = document.createElement('div')
+            content.style.cssText = `flex: 1`
 
-      const nameRow = document.createElement('div')
-      nameRow.style.cssText = `
+            const nameRow = document.createElement('div')
+            nameRow.style.cssText = `
         font-size: 10px; margin-bottom: 3px;
         display: flex; align-items: center; gap: 6px;
       `
-      nameRow.innerHTML = `
+            nameRow.innerHTML = `
         <span style="color:${agent.color};font-weight:bold">${agent.name}</span>
         <span style="color:#2a4a5a;font-size:9px">${agent.personality?.type || ''}</span>
       `
 
-      const textBubble = document.createElement('div')
-      textBubble.className = 'chat-text'
-      textBubble.style.cssText = `
+            const textBubble = document.createElement('div')
+            textBubble.className = 'chat-text'
+            textBubble.style.cssText = `
         background: rgba(${hexToRgb(agent.color)}, 0.08);
         border: 1px solid rgba(${hexToRgb(agent.color)}, 0.25);
         border-radius: 4px 12px 12px 12px;
@@ -1181,50 +1628,50 @@
         color: #c8d6e5;
         min-height: 20px;
       `
-      textBubble.textContent = isStreaming ? '' : text
+            textBubble.textContent = isStreaming ? '' : text
 
-      content.appendChild(nameRow)
-      content.appendChild(textBubble)
-      bubble.appendChild(avatar)
-      bubble.appendChild(content)
-      container.appendChild(bubble)
-      container.scrollTop = container.scrollHeight
+            content.appendChild(nameRow)
+            content.appendChild(textBubble)
+            bubble.appendChild(avatar)
+            bubble.appendChild(content)
+            container.appendChild(bubble)
+            container.scrollTop = container.scrollHeight
 
-      return { id: msgId, textEl: textBubble }
-    }
+            return { id: msgId, textEl: textBubble }
+        }
 
-    // Helper to convert hex color to rgb for rgba()
-    function hexToRgb(hex) {
-      const r = parseInt(hex.slice(1,3),16)
-      const g = parseInt(hex.slice(3,5),16)
-      const b = parseInt(hex.slice(5,7),16)
-      return `${r},${g},${b}` 
-    }
+        // Helper to convert hex color to rgb for rgba()
+        function hexToRgb(hex) {
+            const r = parseInt(hex.slice(1, 3), 16)
+            const g = parseInt(hex.slice(3, 5), 16)
+            const b = parseInt(hex.slice(5, 7), 16)
+            return `${r},${g},${b}`
+        }
 
-    window.renderChatMessage = renderChatMessage
+        window.renderChatMessage = renderChatMessage
 
-    // TYPING INDICATOR FUNCTIONS
-    function showTypingIndicator(agent) {
-      const indicator = document.getElementById('typing-indicator')
-      if (!indicator) return
-      indicator.style.display = 'block'
-      indicator.innerHTML = `
+        // TYPING INDICATOR FUNCTIONS
+        function showTypingIndicator(agent) {
+            const indicator = document.getElementById('typing-indicator')
+            if (!indicator) return
+            indicator.style.display = 'block'
+            indicator.innerHTML = `
         <span style="color:${agent.color}">${agent.name}</span>
         <span style="color:#2a4a5a"> is thinking</span>
         <span class="typing-dots">
           <span>.</span><span>.</span><span>.</span>
         </span>
       `
-    }
+        }
 
-    function hideTypingIndicator() {
-      const indicator = document.getElementById('typing-indicator')
-      if (indicator) indicator.style.display = 'none'
-    }
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator')
+            if (indicator) indicator.style.display = 'none'
+        }
 
-    // Add CSS for animated dots:
-    const style = document.createElement('style')
-    style.textContent = `
+        // Add CSS for animated dots:
+        const style = document.createElement('style')
+        style.textContent = `
       .typing-dots span {
         animation: typingBlink 1.2s infinite;
         opacity: 0;
@@ -1243,157 +1690,152 @@
         to   { opacity: 1; transform: translateY(0) }
       }
     `
-    document.head.appendChild(style)
+        document.head.appendChild(style)
 
-    window.showTypingIndicator = showTypingIndicator
-    window.hideTypingIndicator = hideTypingIndicator
+        window.showTypingIndicator = showTypingIndicator
+        window.hideTypingIndicator = hideTypingIndicator
 
-    // ============================================================
-    // END GAME
-    // ============================================================
-    function endGame(winner) {
-        if (!winner) return
-        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
-        window.WORLD.setPhase('gameover')
+        // ============================================================
+        // END GAME
+        // ============================================================
+        function endGame(winner) {
+            if (!winner) return
+            if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+            window.WORLD.setPhase('gameover')
 
-        const isCrewWin = winner === 'crewmates'
-        const titleEl   = document.getElementById('gameover-title')
-        const reasonEl  = document.getElementById('gameover-reason')
+            const isCrewWin = winner === 'crewmates'
+            const titleEl = document.getElementById('gameover-title')
+            const reasonEl = document.getElementById('gameover-reason')
 
-        titleEl.textContent = isCrewWin ? 'CREWMATES WIN' : 'IMPOSTORS WIN'
-        titleEl.className   = 'gameover-title ' + (isCrewWin ? 'crewmate-win' : 'impostor-win')
+            titleEl.textContent = isCrewWin ? 'CREWMATES WIN' : 'IMPOSTORS WIN'
+            titleEl.className = 'gameover-title ' + (isCrewWin ? 'crewmate-win' : 'impostor-win')
 
-        const done  = WORLD.getCompletedTasks()
-        const total = WORLD.getTotalTasks()
-        const kills = WORLD.allAgents.filter(a => !a.alive && a.role === 'crewmate').length
+            const done = WORLD.getCompletedTasks()
+            const total = WORLD.getTotalTasks()
+            const kills = WORLD.allAgents.filter(a => !a.alive && a.role === 'crewmate').length
 
-        if (isCrewWin) {
-            reasonEl.textContent = done >= total ? 'All tasks completed' : 'All impostors eliminated'
-        } else {
-            reasonEl.textContent = 'Impostors outnumber crewmates'
-        }
+            if (isCrewWin) {
+                reasonEl.textContent = done >= total ? 'All tasks completed' : 'All impostors eliminated'
+            } else {
+                reasonEl.textContent = 'Impostors outnumber crewmates'
+            }
 
-        // Role reveal — use allAgents so all 6 always appear
-        const revealEl = document.getElementById('role-reveal')
-        revealEl.innerHTML = ''
-        WORLD.allAgents.forEach(agent => {
-            const item = document.createElement('div')
-            item.className = 'role-item'
-            const isImp = agent.role === 'impostor'
-            item.innerHTML = `
+            // Role reveal — use allAgents so all 6 always appear
+            const revealEl = document.getElementById('role-reveal')
+            revealEl.innerHTML = ''
+            WORLD.allAgents.forEach(agent => {
+                const item = document.createElement('div')
+                item.className = 'role-item'
+                const isImp = agent.role === 'impostor'
+                item.innerHTML = `
                 <div class="role-item-name">${agent.name}</div>
                 <span class="role-item-badge ${agent.role}">${isImp ? '🔴 IMPOSTOR' : '🟢 CREWMATE'}</span>
                 <div class="role-item-status">${agent.alive ? 'alive' : 'dead'}</div>
             `
-            revealEl.appendChild(item)
-        })
-
-        const ejectedImpostor = WORLD.allAgents.some(a => !a.alive && a.role === 'impostor')
-
-        document.getElementById('stat-rounds').textContent   = Math.floor(WORLD.gameTick / 10)
-        document.getElementById('stat-tasks').textContent    = `${done}/${total}`
-        document.getElementById('stat-kills').textContent    = kills
-        document.getElementById('stat-ejection').textContent = ejectedImpostor ? 'Yes' : 'No'
-
-        document.getElementById('gameover-overlay').style.display = 'flex'
-        document.getElementById('start-btn').disabled = false
-    }
-
-    // ============================================================
-    // RESET / PLAY AGAIN
-    // ============================================================
-    function cleanupAgents() {
-        // Remove all agent meshes
-        Object.values(window.agentMeshes).forEach(mesh => {
-            if (!mesh) return
-            mesh.traverse(c => {
-                if (c instanceof THREE.CSS2DObject) {
-                    if (c.parent) c.parent.remove(c)
-                    if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
-                }
-                if (c.geometry) c.geometry.dispose()
-                if (c.material) c.material.dispose()
+                revealEl.appendChild(item)
             })
-            scene.remove(mesh)
-        })
-        window.agentMeshes = {}
 
-        // Remove body markers
-        Object.values(window.bodyMarkers).forEach(m => { if (m) scene.remove(m) })
-        window.bodyMarkers = {}
+            const ejectedImpostor = WORLD.allAgents.some(a => !a.alive && a.role === 'impostor')
 
-        // Remove progress bars
-        Object.keys(window.agentProgressBars).forEach(id => {
-            const bar = window.agentProgressBars[id]
-            if (bar?.obj?.parent) bar.obj.parent.remove(bar.obj)
-            if (bar?.wrap?.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
-        })
-        window.agentProgressBars = {}
-    }
+            document.getElementById('stat-rounds').textContent = Math.floor(WORLD.gameTick / 10)
+            document.getElementById('stat-tasks').textContent = `${done}/${total}`
+            document.getElementById('stat-kills').textContent = kills
+            document.getElementById('stat-ejection').textContent = ejectedImpostor ? 'Yes' : 'No'
 
-    function resetGame() {
-        if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
-        isPaused = false
+            document.getElementById('gameover-overlay').style.display = 'flex'
+            document.getElementById('start-btn').disabled = false
+        }
 
-        cleanupAgents()
+        // ============================================================
+        // RESET / PLAY AGAIN
+        // ============================================================
+        function cleanupAgents() {
+            // Remove all agent meshes
+            Object.values(window.agentMeshes).forEach(mesh => {
+                if (!mesh) return
+                mesh.traverse(c => {
+                    if (c instanceof THREE.CSS2DObject) {
+                        if (c.parent) c.parent.remove(c)
+                        if (c.element?.parentNode) c.element.parentNode.removeChild(c.element)
+                    }
+                    if (c.geometry) c.geometry.dispose()
+                    if (c.material) c.material.dispose()
+                })
+                scene.remove(mesh)
+            })
+            window.agentMeshes = {}
 
-        window.meetingInProgress = false
+            // Remove body markers
+            Object.values(window.bodyMarkers).forEach(m => { if (m) scene.remove(m) })
+            window.bodyMarkers = {}
 
-        // Reset world state
-        WORLD.agents = []
-        WORLD.allAgents = []
-        WORLD.gameTick = 0
-        WORLD.phase = 'idle'
-        WORLD.winner = null
-        WORLD.events = []
-        WORLD.pendingMeeting = false
-        WORLD.bodyFound = null
-        WORLD.lastKnownDeadCount = 0
+            // Remove progress bars
+            Object.keys(window.agentProgressBars).forEach(id => {
+                const bar = window.agentProgressBars[id]
+                if (bar?.obj?.parent) bar.obj.parent.remove(bar.obj)
+                if (bar?.wrap?.parentNode) bar.wrap.parentNode.removeChild(bar.wrap)
+            })
+            window.agentProgressBars = {}
+        }
 
-        Object.values(WORLD.rooms).forEach(r => {
-            r.agents  = new Set()
-            r.hasBody = false
-            r.bodyOf  = null
-        })
-
-        WORLD.initializeTasks()
-
-        document.getElementById('event-log-container').innerHTML = ''
-        document.getElementById('meeting-overlay').style.display  = 'none'
-        document.getElementById('gameover-overlay').style.display = 'none'
-        document.getElementById('pause-btn').textContent = '⏸ PAUSE'
-        document.getElementById('start-btn').disabled = false
-
-        WORLD.updateAgentPanel()
-        WORLD.updateTaskHUD()
-        WORLD.updatePhaseHUD('idle')
-
-        addLog('Game reset — press START', 'system')
-    }
-
-    function playAgain() {
-        resetGame()
-        // Small delay then auto-start
-        setTimeout(() => {
-            window.WORLD.spawnAgents()
+        function resetGame() {
+            if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
             isPaused = false
-            window.WORLD.setPhase('roaming')
-            startTickLoop()
-            document.getElementById('start-btn').disabled = true
-            addLog('New game started!', 'system')
-        }, 100)
-    }0
 
-    window.endGame   = endGame
-    window.resetGame = resetGame
-    window.playAgain = playAgain
+            cleanupAgents()
 
-    // ============================================================
-    // EXPOSE hideMeetingOverlay for worldstate.js
-    // ============================================================
-    window.hideMeetingOverlay = function() {
-        document.getElementById('meeting-overlay').style.display = 'none'
-    }
+            window.meetingInProgress = false
+
+            // Reset world state
+            WORLD.agents = []
+            WORLD.allAgents = []
+            WORLD.gameTick = 0
+            WORLD.phase = 'idle'
+            WORLD.winner = null
+            WORLD.events = []
+            WORLD.pendingMeeting = false
+            WORLD.bodyFound = null
+            WORLD.lastKnownDeadCount = 0
+            window.GAME_CONFIG.playerRole = null
+            window.playerAgent = null
+
+            Object.values(WORLD.rooms).forEach(r => {
+                r.agents = new Set()
+                r.hasBody = false
+                r.bodyOf = null
+            })
+
+            WORLD.initializeTasks()
+
+            document.getElementById('event-log-container').innerHTML = ''
+            document.getElementById('meeting-overlay').style.display = 'none'
+            document.getElementById('gameover-overlay').style.display = 'none'
+            document.getElementById('pause-btn').textContent = '⏸ PAUSE'
+            document.getElementById('start-btn').disabled = false
+
+
+            WORLD.updateAgentPanel()
+            WORLD.updateTaskHUD()
+            WORLD.updatePhaseHUD('idle')
+
+            addLog('Game reset — press START', 'system')
+        }
+
+        function playAgain() {
+            resetGame()
+        }
+
+        window.endGame = endGame
+        window.resetGame = resetGame
+        window.playAgain = playAgain
+
+        // ============================================================
+        // EXPOSE hideMeetingOverlay for worldstate.js
+        // ============================================================
+        window.hideMeetingOverlay = function () {
+            document.getElementById('meeting-overlay').style.display = 'none'
+        }
     </script>
 </body>
+
 </html>

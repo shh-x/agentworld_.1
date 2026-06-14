@@ -8,7 +8,10 @@ const GAME_CONFIG = {
   // Agents
   TOTAL_AGENTS: 6,
   IMPOSTOR_COUNT: 1,
-  TASKS_PER_AGENT: 3,
+  TASKS_PER_AGENT: 5,
+  mode: 'ai',
+  playerName: 'NOVA',
+  playerRole: null,
 
   // Win conditions
   TASK_WIN: true,              // crewmates win by finishing all tasks
